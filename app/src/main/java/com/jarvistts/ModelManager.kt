@@ -16,6 +16,7 @@ object ModelManager {
     private const val PREFS_NAME = "jarvis_model_prefs"
     private const val KEY_SELECTED_PATH = "selected_model_path"
     private const val KEY_SELECTED_VOICE = "selected_voice"
+    private const val PERSONAS_ASSET = "personas.json"
     private val VOICE_EXTENSIONS = setOf("wav", "mp3", "flac", "ogg", "m4a", "aac")
 
     const val DEFAULT_LLM_FILENAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
@@ -78,6 +79,23 @@ object ModelManager {
         name: String,
     ) {
         prefs(context).edit().putString(KEY_SELECTED_VOICE, name).apply()
+    }
+
+    /** Character/system-prompt text per voice, keyed the same way voices
+     *  are (the .wav's filename without extension). Loaded from a bundled
+     *  JSON asset instead of hardcoded in MainActivity, so tuning a
+     *  persona's wording or adding one for a new voice is a data edit, not
+     *  a Kotlin change.
+     */
+    fun loadPersonas(context: Context): Map<String, String> =
+        parsePersonas(context.assets.open(PERSONAS_ASSET).bufferedReader().use { it.readText() })
+
+    /** Split out from [loadPersonas] so the parsing itself is testable under
+     *  plain JUnit without an Android Context/AssetManager.
+     */
+    fun parsePersonas(json: String): Map<String, String> {
+        @Suppress("UNCHECKED_CAST")
+        return MiniJson.parse(json) as Map<String, String>
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

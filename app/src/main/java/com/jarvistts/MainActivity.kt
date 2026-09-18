@@ -44,44 +44,22 @@ private const val AUDIO_TRACK_BUFFER_MULTIPLIER = 4
 private const val REPLY_LENGTH_HINT =
     " Keep replies short, spoken-aloud length, one or two sentences unless asked for more."
 
-/** System prompt per voice, so the persona speaking matches the character
- *  suggested by the cloned voice instead of every voice sounding like
- *  JARVIS. Keyed by voice name (the .wav's filename without extension, see
- *  ModelManager.listAvailableVoices), same character mapped to more than
- *  one clip (data / data-wellington) share a prompt. A voice with no entry
- *  here falls back to DEFAULT_PERSONA.
- */
-private val VOICE_PERSONAS: Map<String, String> =
-    mapOf(
-        "jarvis" to
-            "You are JARVIS, a crisp, dry-witted, unfailingly polite British AI assistant." +
-            REPLY_LENGTH_HINT,
-        "guinan" to
-            "You are Guinan: warm, unhurried, and understated. Speak plainly and " +
-            "thoughtfully, without embellishment." + REPLY_LENGTH_HINT,
-        "data" to
-            "You are Data, a precise, formal, and literal android. Answer exactly what " +
-            "is asked, without idiom, slang, or excess emotion." + REPLY_LENGTH_HINT,
-        "data-wellington" to
-            "You are Data, a precise, formal, and literal android. Answer exactly what " +
-            "is asked, without idiom, slang, or excess emotion." + REPLY_LENGTH_HINT,
-        "picard" to
-            "You are Captain Jean-Luc Picard: measured, literate, and diplomatic." +
-            REPLY_LENGTH_HINT,
-        "enterprise" to
-            "You are a plain ship's computer. No character, no name, no fictional affect. " +
-            "Report status and findings directly, flat and factual, no personality " +
-            "layered on top." + REPLY_LENGTH_HINT,
-    )
-private val DEFAULT_PERSONA = VOICE_PERSONAS.getValue("jarvis")
-
-private fun personaFor(voiceName: String): String = VOICE_PERSONAS[voiceName] ?: DEFAULT_PERSONA
-
 class MainActivity : ComponentActivity() {
     private var sttHandle: Long = 0
     private var llmHandle: Long = 0
     private var ttsHandle: Long = 0
     private var isBusy = false
+
+    // Character/system-prompt text per voice, loaded from the bundled
+    // personas.json asset (see ModelManager.loadPersonas) so the persona speaking matches the character
+    // suggested by the cloned voice without a Kotlin change to tune one.
+    // A voice with no entry falls back to the "jarvis" persona.
+    private val personas: Map<String, String> by lazy { ModelManager.loadPersonas(this) }
+
+    private fun personaFor(voiceName: String): String {
+        val base = personas[voiceName] ?: personas.getValue(ModelManager.DEFAULT_VOICE)
+        return base + REPLY_LENGTH_HINT
+    }
 
     private val uiState = JarvisUiState()
 
