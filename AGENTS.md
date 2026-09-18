@@ -16,38 +16,6 @@ Pipeline: mic -> VAD auto-stop recording -> whisper.cpp (STT) -> llama.cpp
 
 Proven working end-to-end on a Pixel 8 Pro as of 2026-09-17.
 
-## Multi-agent ownership convention
-
-Multiple agent sessions have worked on this repo concurrently (a
-"backend/native" session and a "frontend/UI" session, by convention, not by
-any file permission enforced in code). If you're picking this up fresh,
-pick a lane and stick to it, or check `ListAgents` for a live session
-already working the other lane before you start editing:
-
-- **Native/backend territory**: `app/src/main/cpp/**`, `NativeSTT.kt`,
-  `NativeLLM.kt`, `NativeBridge.kt` (JNI declarations only, no logic),
-  `VoicePipeline.kt`, `ModelManager.kt`, `ModelDownloader.kt`. Model
-  loading, prompt formatting, audio pipeline internals, native build
-  config.
-- **UI/orchestration territory**: `MainActivity.kt` (Activity lifecycle,
-  coroutine orchestration, calls into the native-side APIs above),
-  `JarvisScreen.kt` (all Compose UI, theming, layout), `ChatSession.kt`,
-  `SessionStore.kt`, `MiniJson.kt` (saved-conversation data model, CRUD,
-  and its JSON codec, no native/model coupling, driven entirely from
-  `MainActivity`'s turn list).
-- **Shared, edit with care**: `app/build.gradle.kts`, `build.gradle.kts`,
-  `settings.gradle.kts`, `AndroidManifest.xml`. Small, additive, low-risk
-  changes (a permission line, a dependency) are fine solo; anything
-  structural, message the other session first.
-
-If you need a change in the other lane's territory, **send a message with
-exact code** (via `SendMessage`/cross-session messaging) rather than
-editing it yourself. Whoever owns the file applies it and asks for a
-rebuild/verify from whoever has a working JDK+Gradle shell. This isn't a
-hard technical boundary, more than one session has broken it without harm,
-but it avoids concurrent-edit collisions and it's the standing agreement
-between sessions on this repo, so ask before you break it again.
-
 There is currently no git repository in this working directory (verify
 with `git status` before assuming otherwise; it may have changed since this
 was written). That means there is no merge/diff safety net for concurrent
