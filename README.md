@@ -37,6 +37,8 @@ Recording stops automatically when you stop speaking. You do not need to hold do
 
 All three engines warm up in parallel when the app starts. Loading and download progress is shown for each engine.
 
+Tap **Stop** while Jarvis is listening, thinking, or speaking to cancel that turn immediately.
+
 ## Models
 
 ### Speech-to-text
@@ -71,6 +73,19 @@ Chat formatting is detected automatically from the loaded model. No code changes
 - **Download:** Not currently available for the custom-exported models
 
 STT and LLM models are downloaded instead of bundled so the APK stays around **159 MB**, rather than approaching 1 GB.
+
+## Session history
+
+Every conversation is saved automatically as it happens. No manual save step is needed.
+
+- **New** starts a fresh conversation. The current one is saved first if it has any turns.
+- **History** lists saved conversations. Tap one to resume it, or tap **x** to delete it.
+
+Sessions are stored as JSON files under the app's internal `files/sessions/` directory. A session is written after every completed, stopped, or errored turn, so a killed or backgrounded app loses at most the single in-flight turn.
+
+Titles are generated automatically from the first thing you said.
+
+There is currently no size cap or automatic pruning. Sessions accumulate indefinitely in internal storage. Each one is small, so this is unlikely to matter in practice, but there is no bulk-delete option yet, only one at a time from **History**.
 
 ## Build requirements
 
@@ -238,8 +253,14 @@ app/src/main/
 │   │   Transcript cleanup, VAD, and testable voice logic
 │   ├── ModelManager.kt
 │   │   Model discovery, download URLs, and model selection
-│   └── ModelDownloader.kt
-│       Model downloads and progress reporting
+│   ├── ModelDownloader.kt
+│   │   Model downloads and progress reporting
+│   ├── ChatSession.kt
+│   │   Saved-conversation data model and JSON encode/decode
+│   ├── SessionStore.kt
+│   │   Filesystem CRUD for saved conversations
+│   └── MiniJson.kt
+│       Dependency-free JSON reader and writer used by SessionStore
 │
 ├── cpp/
 │   ├── CMakeLists.txt
@@ -255,7 +276,10 @@ app/src/main/
 │       └── jarvis-03.wav
 │
 └── src/test/java/com/jarvistts/
-    └── VoicePipelineTest.kt
+    ├── VoicePipelineTest.kt
+    ├── SessionStoreTest.kt
+    ├── SessionCodecTest.kt
+    └── MiniJsonTest.kt
 ```
 
 STT and LLM models are not included in `assets/`. They download the first time they are needed.

@@ -31,7 +31,10 @@ already working the other lane before you start editing:
   config.
 - **UI/orchestration territory**: `MainActivity.kt` (Activity lifecycle,
   coroutine orchestration, calls into the native-side APIs above),
-  `JarvisScreen.kt` (all Compose UI, theming, layout).
+  `JarvisScreen.kt` (all Compose UI, theming, layout), `ChatSession.kt`,
+  `SessionStore.kt`, `MiniJson.kt` (saved-conversation data model, CRUD,
+  and its JSON codec, no native/model coupling, driven entirely from
+  `MainActivity`'s turn list).
 - **Shared, edit with care**: `app/build.gradle.kts`, `build.gradle.kts`,
   `settings.gradle.kts`, `AndroidManifest.xml`. Small, additive, low-risk
   changes (a permission line, a dependency) are fine solo; anything
@@ -154,13 +157,21 @@ needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
 
 Working: STT, LLM, TTS, VAD auto-stop recording, parallel engine warm-up
 with real/approximate load-progress UI, LLM model switching, pause/resume
-for TTS playback, model download-on-first-launch for STT+LLM, ktlint +
-JaCoCo wired up, 12 passing JUnit tests (`VoicePipeline`, `SilenceDetector`
-logic only — anything Android-framework- or Compose-coupled has 0% coverage
-by design, since instrumented/Robolectric tests were explicitly deferred in
-favor of fast local-only JUnit).
+for TTS playback, model download-on-first-launch for STT+LLM, a "Stop"
+control that aborts an in-flight listen/think/speak turn, session
+history (auto-save to local JSON, "New"/"History" in the top bar to start
+fresh or resume/delete a past conversation, see README's "Session history"),
+ktlint + JaCoCo wired up, 31 passing JUnit tests (`VoicePipeline`,
+`SilenceDetector`, `MiniJson`, `SessionCodec`, `SessionStore` logic only,
+anything Android-framework- or Compose-coupled has 0% coverage by design,
+since instrumented/Robolectric tests were explicitly deferred in favor of
+fast local-only JUnit).
 
 Not done / open follow-ups:
+- Session history has no pruning/size cap (see README) and the "History"
+  list/rename/delete UI hasn't been visually verified on a device, only
+  compiled and unit-tested (no device was available to install to when
+  this was built).
 - TTS models not downloadable (needs a hosting decision from the user).
 - No release/signing config, only debug builds exist. Fine for sideloading
   to a friend; would need a keystore + `signingConfig` for anything wider.

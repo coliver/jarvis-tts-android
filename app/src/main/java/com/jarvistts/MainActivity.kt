@@ -66,6 +66,13 @@ class MainActivity : ComponentActivity() {
     private var stageStartedAt: Long = 0L
     private var currentTtsTrack: AudioTrack? = null
 
+    @Volatile private var stopRequested = false
+
+    private class UserStoppedException : Exception()
+
+    private val sessionStore by lazy { SessionStore(File(filesDir, "sessions")) }
+    private var currentSessionId: String? = null
+
     private fun beginStage(caption: String) {
         uiState.caption = caption
         stageStartedAt = System.currentTimeMillis()
@@ -83,9 +90,15 @@ class MainActivity : ComponentActivity() {
                     onMicTap = ::onMicTap,
                     onModelSelect = ::onModelSelected,
                     onPauseToggle = ::onPauseToggle,
+                    onStopTap = ::onStopTapped,
+                    onNewSession = ::onNewSession,
+                    onSessionSelect = ::onSessionSelect,
+                    onSessionDelete = ::onSessionDelete,
                 )
             }
         }
+
+        refreshSessionList()
 
         CoroutineScope(Dispatchers.Main).launch {
             try {
@@ -111,6 +124,7 @@ class MainActivity : ComponentActivity() {
         if (isBusy || uiState.phase == Phase.WARMING_UP) return
         isBusy = true
         uiState.errorMessage = null
+        stopRequested = false
         CoroutineScope(Dispatchers.Main).launch {
             val ticker =
                 launch {
@@ -127,10 +141,14 @@ class MainActivity : ComponentActivity() {
                 uiState.phase = Phase.THINKING
                 beginStage("Thinking")
                 val reply = askJarvis(heard.text)
+                if (stopRequested) throw UserStoppedException()
                 uiState.turns.add(Turn(Speaker.JARVIS, reply.text, reply.durationMs))
                 uiState.phase = Phase.SPEAKING
                 beginStage("Speaking")
                 speak(reply.text)
+                uiState.phase = Phase.IDLE
+                uiState.caption = "Tap to talk"
+            } catch (e: UserStoppedException) {
                 uiState.phase = Phase.IDLE
                 uiState.caption = "Tap to talk"
             } catch (e: Exception) {
@@ -139,8 +157,90 @@ class MainActivity : ComponentActivity() {
                 uiState.errorMessage = "Error: ${e.message}"
             } finally {
                 ticker.cancel()
+                persistCurrentSession()
                 isBusy = false
             }
+        }
+    }
+
+    private fun refreshSessionList() {
+        uiState.sessions = sessionStore.list()
+    }
+
+    /** Upserts the in-progress conversation to disk. Called after every turn
+     *  attempt (success, user-stop, or error) so a killed/backgrounded app
+     *  never loses more than the single in-flight turn. Runs synchronously
+     *  on the main thread: it's a few KB of JSON to local storage, the same
+     *  order of cost as the SharedPreferences write ModelManager already
+     *  does inline, not worth a dispatcher hop.
+     */
+    private fun persistCurrentSession() {
+        if (uiState.turns.isEmpty()) return
+        try {
+            val id = currentSessionId
+            val saved =
+                if (id == null) {
+                    sessionStore.create(uiState.turns.toList())
+                } else {
+                    sessionStore.update(id, uiState.turns.toList())
+                }
+            currentSessionId = saved.id
+            refreshSessionList()
+        } catch (e: Exception) {
+            android.util.Log.w("JarvisSession", "Failed to save session", e)
+        }
+    }
+
+    /** Starts a fresh conversation. Saves the current one first if it has
+     *  any turns, so switching to "New" never silently drops history.
+     */
+    private fun onNewSession() {
+        if (isBusy || uiState.phase != Phase.IDLE) return
+        persistCurrentSession()
+        currentSessionId = null
+        uiState.turns.clear()
+        uiState.errorMessage = null
+    }
+
+    private fun onSessionSelect(id: String) {
+        if (isBusy || uiState.phase != Phase.IDLE) return
+        persistCurrentSession()
+        val session = sessionStore.load(id) ?: return
+        currentSessionId = session.id
+        uiState.turns.clear()
+        uiState.turns.addAll(session.turns)
+        uiState.errorMessage = null
+    }
+
+    private fun onSessionDelete(id: String) {
+        sessionStore.delete(id)
+        if (id == currentSessionId) {
+            currentSessionId = null
+            uiState.turns.clear()
+        }
+        refreshSessionList()
+    }
+
+    /** Aborts whatever's in flight and snaps back to idle, rather than pausing
+     *  (pause only exists for TTS playback). Each phase needs a different
+     *  interruption mechanism since none of listenAndTranscribe/askJarvis/speak
+     *  are cooperatively cancellable suspend loops -- they're blocked on either
+     *  a blocking AudioRecord.read/AudioTrack.write call or a native function
+     *  call, so a plain coroutine job.cancel() wouldn't interrupt them.
+     */
+    private fun onStopTapped() {
+        when (uiState.phase) {
+            Phase.LISTENING, Phase.THINKING, Phase.SPEAKING -> {
+                stopRequested = true
+                if (uiState.phase == Phase.THINKING && llmHandle != 0L) {
+                    NativeLLM.nativeCancelGenerate(llmHandle)
+                }
+                if (uiState.phase == Phase.SPEAKING) {
+                    uiState.isPaused = false
+                    currentTtsTrack?.stop()
+                }
+            }
+            else -> {}
         }
     }
 
@@ -347,6 +447,7 @@ class MainActivity : ComponentActivity() {
         withContext(Dispatchers.Default) {
             val recordStart = System.currentTimeMillis()
             val pcm = recordPcm { level -> uiState.pushAmplitude(level) }
+            if (stopRequested) throw UserStoppedException()
             val recordMs = System.currentTimeMillis() - recordStart
             android.util.Log.d("JarvisTiming", "recorded ${pcm.size / STT_SAMPLE_RATE.toFloat()}s of audio in ${recordMs}ms")
             withContext(Dispatchers.Main) { beginStage("Transcribing") }
@@ -364,6 +465,7 @@ class MainActivity : ComponentActivity() {
                 "JarvisTiming",
                 "whisper_full took ${transcribeMs}ms for ${pcm.size / STT_SAMPLE_RATE.toFloat()}s of audio -> \"$result\"",
             )
+            if (stopRequested) throw UserStoppedException()
             TimedResult(result, transcribeMs)
         }
 
@@ -395,6 +497,7 @@ class MainActivity : ComponentActivity() {
         try {
             recorder.startRecording()
             while (total < maxSamples) {
+                if (stopRequested) break
                 val read = recorder.read(chunk, 0, chunkSamples)
                 if (read <= 0) break
 
@@ -449,6 +552,7 @@ class MainActivity : ComponentActivity() {
             check(streamCtx != 0L) { "ptt_stream_start failed" }
             try {
                 while (true) {
+                    if (stopRequested) break
                     while (uiState.isPaused) {
                         delay(50)
                     }

@@ -27,5 +27,11 @@ object NativeLLM {
         maxTokens: Int,
     ): String
 
+    /** Flags an in-flight nativeGenerate() call (running on another thread)
+     *  to stop at the next token boundary. Safe to call from any thread;
+     *  nativeGenerate returns whatever it had accumulated so far.
+     */
+    external fun nativeCancelGenerate(handle: Long)
+
     external fun nativeDestroy(handle: Long)
 }

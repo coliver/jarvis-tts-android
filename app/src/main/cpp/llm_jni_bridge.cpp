@@ -3,6 +3,7 @@
 // the Kotlin side; this just tokenizes, decodes, and detokenizes.
 #include <algorithm>
 #include <android/log.h>
+#include <atomic>
 #include <chrono>
 #include <jni.h>
 #include <string>
@@ -15,6 +16,7 @@
 struct LlmSession {
     llama_model *model;
     llama_context *ctx;
+    std::atomic<bool> cancelRequested{false};
 };
 
 static int nThreads() {
@@ -114,6 +116,7 @@ Java_com_jarvistts_NativeLLM_nativeGenerate(JNIEnv *env, jobject, jlong handle, 
     }
     llama_model *model = session->model;
     llama_context *ctx = session->ctx;
+    session->cancelRequested.store(false);
 
     const char *prompt_chars = env->GetStringUTFChars(prompt, nullptr);
     std::string prompt_str(prompt_chars);
@@ -150,6 +153,9 @@ Java_com_jarvistts_NativeLLM_nativeGenerate(JNIEnv *env, jobject, jlong handle, 
     int n_decode = 0;
     llama_token new_token_id;
     for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + maxTokens;) {
+        if (session->cancelRequested.load()) {
+            break;
+        }
         if (llama_decode(ctx, batch)) {
             break;
         }
@@ -191,6 +197,19 @@ Java_com_jarvistts_NativeLLM_nativeGenerate(JNIEnv *env, jobject, jlong handle, 
                          n_decode < maxTokens);
 
     return env->NewStringUTF(result.c_str());
+}
+
+// Called from a different thread than the one blocked inside nativeGenerate
+// (that call doesn't return until generation stops), so this can't return
+// partial output directly -- it just flags the loop to stop at the next
+// token boundary. nativeGenerate then returns whatever it had accumulated
+// so far, same as hitting maxTokens or an end-of-generation token.
+extern "C" JNIEXPORT void JNICALL
+Java_com_jarvistts_NativeLLM_nativeCancelGenerate(JNIEnv *, jobject, jlong handle) {
+    auto *session = reinterpret_cast<LlmSession *>(handle);
+    if (session != nullptr) {
+        session->cancelRequested.store(true);
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL

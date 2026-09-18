@@ -89,6 +89,7 @@ class JarvisUiState {
     var errorMessage by mutableStateOf<String?>(null)
     var availableModels by mutableStateOf<List<String>>(emptyList())
     var selectedModelName by mutableStateOf("")
+    var sessions by mutableStateOf<List<SessionSummary>>(emptyList())
     val turns = mutableStateListOf<Turn>()
     val amplitude = mutableStateListOf<Float>().apply { repeat(WAVE_BARS) { add(0f) } }
 
@@ -127,6 +128,10 @@ fun JarvisScreen(
     onMicTap: () -> Unit,
     onModelSelect: (String) -> Unit = {},
     onPauseToggle: () -> Unit = {},
+    onStopTap: () -> Unit = {},
+    onNewSession: () -> Unit = {},
+    onSessionSelect: (String) -> Unit = {},
+    onSessionDelete: (String) -> Unit = {},
 ) {
     Column(
         modifier =
@@ -137,7 +142,7 @@ fun JarvisScreen(
                 .padding(horizontal = 20.dp),
     ) {
         Spacer(Modifier.height(20.dp))
-        TopBar(state, onModelSelect)
+        TopBar(state, onModelSelect, onNewSession, onSessionSelect, onSessionDelete)
         Spacer(Modifier.height(14.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
         Spacer(Modifier.height(18.dp))
@@ -158,7 +163,7 @@ fun JarvisScreen(
         }
 
         Spacer(Modifier.height(12.dp))
-        MicControl(state, micEnabled, onMicTap, onPauseToggle)
+        MicControl(state, micEnabled, onMicTap, onPauseToggle, onStopTap)
         Spacer(Modifier.height(28.dp))
     }
 }
@@ -167,6 +172,9 @@ fun JarvisScreen(
 private fun TopBar(
     state: JarvisUiState,
     onModelSelect: (String) -> Unit,
+    onNewSession: () -> Unit,
+    onSessionSelect: (String) -> Unit,
+    onSessionDelete: (String) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -189,7 +197,80 @@ private fun TopBar(
                 fontSize = 13.sp,
             )
         } else {
-            ModelPicker(state, onModelSelect)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HistoryPicker(state, onNewSession, onSessionSelect, onSessionDelete)
+                Spacer(Modifier.width(14.dp))
+                ModelPicker(state, onModelSelect)
+            }
+        }
+    }
+}
+
+/** Session history: "New" starts a fresh conversation, "History" lists
+ *  saved ones (tap a row to resume it, tap its "x" to delete it). Both are
+ *  only enabled while idle, same reasoning as ModelPicker: switching
+ *  conversations mid-turn would yank the transcript out from under an
+ *  in-flight listen/think/speak cycle.
+ */
+@Composable
+private fun HistoryPicker(
+    state: JarvisUiState,
+    onNewSession: () -> Unit,
+    onSessionSelect: (String) -> Unit,
+    onSessionDelete: (String) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val enabled = state.phase == Phase.IDLE
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "New",
+            color = if (enabled) TextDim else TextDim.copy(alpha = 0.5f),
+            fontFamily = MonoFamily,
+            fontSize = 11.sp,
+            modifier = Modifier.clickable(enabled = enabled) { onNewSession() },
+        )
+        Spacer(Modifier.width(10.dp))
+        Box {
+            val historyEnabled = enabled && state.sessions.isNotEmpty()
+            Text(
+                text = "History",
+                color = if (historyEnabled) TextDim else TextDim.copy(alpha = 0.5f),
+                fontFamily = MonoFamily,
+                fontSize = 11.sp,
+                modifier = Modifier.clickable(enabled = historyEnabled) { expanded = true },
+            )
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                for (session in state.sessions) {
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = session.title,
+                                    fontFamily = MonoFamily,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                Spacer(Modifier.width(12.dp))
+                                Text(
+                                    text = "x",
+                                    color = Warn,
+                                    fontFamily = MonoFamily,
+                                    fontSize = 13.sp,
+                                    modifier =
+                                        Modifier.clickable {
+                                            expanded = false
+                                            onSessionDelete(session.id)
+                                        },
+                                )
+                            }
+                        },
+                        onClick = {
+                            expanded = false
+                            onSessionSelect(session.id)
+                        },
+                    )
+                }
+            }
         }
     }
 }
@@ -323,6 +404,7 @@ private fun MicControl(
     enabled: Boolean,
     onTap: () -> Unit,
     onPauseToggle: () -> Unit,
+    onStopTap: () -> Unit,
 ) {
     val transition = rememberInfiniteTransition(label = "wave")
     val t by transition.animateFloat(
@@ -404,6 +486,16 @@ private fun MicControl(
                     fontFamily = MonoFamily,
                     fontSize = 13.sp,
                     modifier = Modifier.clickable { onPauseToggle() },
+                )
+            }
+            if (state.phase == Phase.LISTENING || state.phase == Phase.THINKING || state.phase == Phase.SPEAKING) {
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    text = "Stop",
+                    color = Warn,
+                    fontFamily = MonoFamily,
+                    fontSize = 13.sp,
+                    modifier = Modifier.clickable { onStopTap() },
                 )
             }
         }
