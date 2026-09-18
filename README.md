@@ -1,159 +1,343 @@
-# Jarvis TTS (Android)
+# Jarvis TTS for Android
 
-An on-device Android voice assistant. Tap "Ask Jarvis," speak, and it
-transcribes, thinks, and talks back, entirely on-device: no server, no PC,
-no persistent network dependency (models fetch over HTTP once, on first
-launch or model switch).
+A fully on-device voice assistant for Android.
 
-Status: proven end-to-end on a Pixel 8 Pro. See `AGENTS.md` for build
-instructions, architecture detail, and the current backlog if you're
-working on this codebase (human or agent).
+Tap **Ask Jarvis**, speak, and get a spoken response:
+
+1. 🎙️ Records your voice
+2. ✍️ Converts speech to text
+3. 🧠 Generates a reply
+4. 🔊 Reads the reply aloud
+
+No server, PC, or permanent network connection is required.
+
+Models download over HTTP the first time you use them or switch models.
+
+> Tested end-to-end on a Pixel 8 Pro.
+
+For build details, architecture notes, and the current backlog, see [`AGENTS.md`](AGENTS.md).
 
 ## How it works
 
-```
-mic tap -> VAD-gated recording -> whisper.cpp (STT)
-        -> llama.cpp (LLM, chat-template auto-detected from the .gguf)
-        -> Pocket-TTS/omatts via ONNX Runtime (TTS)
-        -> AudioTrack streaming playback (pausable)
-```
-
-Recording auto-stops on silence (no fixed-duration button hold). All three
-engines warm up in parallel on app launch, with live loading/download
-percentages shown per engine. The LLM is swappable at runtime, see "Models"
-below.
-
-## Project layout
-
-```
-app/src/main/
-  java/com/jarvistts/
-    MainActivity.kt      Activity lifecycle, coroutine orchestration, AudioRecord/AudioTrack
-    JarvisScreen.kt       all Compose UI
-    NativeSTT.kt          JNI declarations for whisper.cpp
-    NativeLLM.kt           JNI declarations for llama.cpp
-    NativeBridge.kt        JNI declarations for the TTS engine
-    VoicePipeline.kt      pure logic pulled out for unit testing: transcript cleanup, VAD
-    ModelManager.kt        model discovery, download URLs, user-selection persistence
-    ModelDownloader.kt     streams a model URL to disk with progress
-  cpp/
-    CMakeLists.txt        Android-adapted build for all three native libs (see AGENTS.md)
-    omatts.cpp             copied verbatim from parnoldx/omatts
-    jni_bridge.cpp          thin wrappers around omatts's ptt_* C API
-    stt_jni_bridge.cpp      thin wrappers around whisper.cpp
-    llm_jni_bridge.cpp      thin wrappers around llama.cpp
-  assets/
-    models/                 TTS: exported .onnx + .onnx.data models, tokenizer
-    voices/jarvis-03.wav    TTS: cloned voice sample
-  src/test/java/com/jarvistts/
-    VoicePipelineTest.kt    fast local JUnit tests (no emulator needed)
+```text
+Tap “Ask Jarvis”
+      ↓
+Voice activity detection
+      ↓
+Whisper.cpp — speech to text
+      ↓
+Llama.cpp — generates a reply
+      ↓
+Pocket-TTS / omatts — text to speech
+      ↓
+AudioTrack — streams the audio
 ```
 
-STT and LLM model files are **not** bundled as assets, they're downloaded
-on first use (see "Models"). TTS still is, for now.
+Recording stops automatically when you stop speaking. You do not need to hold down a button for a fixed amount of time.
+
+All three engines warm up in parallel when the app starts. Loading and download progress is shown for each engine.
 
 ## Models
 
-- **Speech-to-text**: whisper.cpp, `ggml-tiny.en-q5_1.bin` (~31MB),
-  downloaded from Hugging Face on first use.
-- **Language model**: llama.cpp, `Llama-3.2-1B-Instruct-Q4_K_M.gguf`
-  (~770MB) by default, also downloaded on first use. Swap it: drop any
-  `.gguf` llama.cpp supports into the app's external files directory
-  (`adb push model.gguf /sdcard/Android/data/com.jarvistts/files/llm/`) and
-  pick it from the model picker in the top bar while idle. Chat prompt
-  formatting auto-detects from whichever model is loaded (via llama.cpp's
-  `llama_chat_apply_template`), no code changes needed per model.
-- **Text-to-speech**: Pocket-TTS via `parnoldx/omatts`, bundled in
-  `assets/` (custom-exported, no public URL to download from yet, see
-  "Model export" below).
+### Speech-to-text
 
-Downloading instead of bundling keeps the installable APK around 159MB
-instead of ~1GB, small enough to hand to someone else directly.
+- **Engine:** `whisper.cpp`
+- **Default model:** `ggml-tiny.en-q5_1.bin`
+- **Size:** Approximately 31 MB
+- **Download:** Hugging Face, on first use
 
-## Native build
+### Language model
 
-`app/src/main/cpp/CMakeLists.txt` builds three shared libraries:
-`jarvis_tts` (omatts/ONNX Runtime), `jarvis_stt` (whisper.cpp, via
-`FetchContent`), `jarvis_llm` (llama.cpp, via an isolated
-`ExternalProject_Add` — it and whisper.cpp both vendor their own `ggml`
-with colliding target names, so they can't share one CMake configure).
+- **Engine:** `llama.cpp`
+- **Default model:** `Llama-3.2-1B-Instruct-Q4_K_M.gguf`
+- **Size:** Approximately 770 MB
+- **Download:** On first use
 
-Forces `CMAKE_BUILD_TYPE=Release` unconditionally near the top of the file.
-**This is load-bearing, not cosmetic** — see AGENTS.md for the AGP bug this
-works around (it once caused a 30-80x slowdown across all whisper.cpp/omatts
-code by silently building at `-O0`).
+You can use a different llama.cpp-compatible model:
 
-Requires CMake 3.28+ and NDK 27.x (see Toolchain below).
+```bash
+adb push model.gguf \
+  /sdcard/Android/data/com.jarvistts/files/llm/
+```
 
-## Toolchain (self-contained, WSL/Linux, command-line only)
+Then select it from the model picker in the top bar while the app is idle.
 
-No Android Studio. Everything lives in `.toolchain/` (gitignored) inside
-this repo, not installed system-wide:
+Chat formatting is detected automatically from the loaded model. No code changes are needed.
 
-- JDK 17 (Temurin)
-- Android `cmdline-tools`, then via its `sdkmanager`:
-  `platform-tools`, `platforms;android-34`, `build-tools;34.0.0`,
-  `ndk;27.2.12479018`, `cmake;3.31.6` (bundles Ninja)
-- `local.properties` sets `sdk.dir=<repo>/.toolchain/android-sdk`
+### Text-to-speech
 
-Build, test, lint:
+- **Engine:** Pocket-TTS through [`parnoldx/omatts`](https://github.com/parnoldx/omatts)
+- **Models:** Bundled in `app/src/main/assets/`
+- **Download:** Not currently available for the custom-exported models
+
+STT and LLM models are downloaded instead of bundled so the APK stays around **159 MB**, rather than approaching 1 GB.
+
+## Build requirements
+
+You do not need Android Studio.
+
+The project keeps its toolchain inside the repository’s gitignored `.toolchain/` directory:
+
+- JDK 17 — Temurin
+- Android command-line tools
+- Android platform 34
+- Android Build Tools 34.0.0
+- Android NDK 27.2.12479018
+- CMake 3.31.6
+- Ninja
+
+The project requires:
+
+- CMake 3.28 or newer
+- Android NDK 27.x
+- WSL/Linux command line
+
+`local.properties` should point to:
+
+```text
+sdk.dir=<repo>/.toolchain/android-sdk
+```
+
+## Build, test, and lint
+
+Set the environment variables:
 
 ```bash
 export JAVA_HOME=<repo>/.toolchain/jdk-17.0.20.1+1
 export ANDROID_HOME=<repo>/.toolchain/android-sdk
+```
+
+Build the debug APK:
+
+```bash
 ./gradlew assembleDebug
+```
+
+Run unit tests:
+
+```bash
 ./gradlew testDebugUnitTest
-./gradlew ktlintCheck      # ./gradlew ktlintFormat to auto-fix
+```
+
+Run lint checks:
+
+```bash
+./gradlew ktlintCheck
+```
+
+Automatically fix formatting:
+
+```bash
+./gradlew ktlintFormat
+```
+
+Generate a test coverage report:
+
+```bash
 ./gradlew jacocoTestReport
 ```
 
-Output: `app/build/outputs/apk/debug/app-debug.apk`.
+The APK will be created at:
 
-## Installing on a device from WSL2
+```text
+app/build/outputs/apk/debug/app-debug.apk
+```
 
-WSL2 has no USB passthrough to the phone by default. Two options:
+## Install on a phone from WSL2
 
-- **Wireless debugging**: enable it in Developer Options, then
-  `adb connect <phone-ip>:<port>` (pair first with `adb pair` if the phone
-  shows a pairing code). Can be flaky mid-transfer on some networks.
-- **USB via Windows adb**: if Windows already has `adb` (e.g. via
-  Chocolatey) and sees the phone over USB, drive it from WSL through
-  `powershell.exe -Command "adb install ..."`. Note: `adb install` fails on
-  UNC paths (`\\wsl.localhost\...`), so copy the APK to a local Windows path
-  (e.g. `$env:TEMP`) first.
+WSL2 usually cannot access a phone over USB directly.
+
+Choose one of these options.
+
+### Option 1: Wireless debugging
+
+1. Enable **Wireless debugging** in Android Developer Options.
+2. Pair the phone:
+
+   ```bash
+   adb pair <phone-ip>:<pairing-port>
+   ```
+
+3. Connect to the phone:
+
+   ```bash
+   adb connect <phone-ip>:<port>
+   ```
+
+4. Install the APK:
+
+   ```bash
+   adb install app/build/outputs/apk/debug/app-debug.apk
+   ```
+
+Wireless debugging can be unreliable during large file transfers.
+
+### Option 2: Windows ADB over USB
+
+If Windows already detects the phone with ADB:
+
+1. Build the APK in WSL.
+2. Copy it to a Windows path.
+3. Install it using Windows ADB through PowerShell.
+
+Example:
+
+```bash
+cp app/build/outputs/apk/debug/app-debug.apk \
+  /mnt/c/Users/<you>/AppData/Local/Temp/
+```
+
+Then run this in PowerShell:
+
+```powershell
+adb install $env:TEMP\app-debug.apk
+```
+
+`adb install` does not work directly with UNC paths such as:
+
+```text
+\\wsl.localhost\...
+```
 
 ## Sharing the APK
 
-The debug APK is a normal sideloadable Android package. To hand it to
-someone else: they need Android 8.0+ on an arm64 device, and to allow
-"install unknown apps" for whatever they use to open the file (it's not
-from the Play Store). Send it as a file (Drive link, USB, etc.), not a chat
-attachment, 159MB is too big for most messaging apps.
+The debug APK can be sideloaded onto another device.
 
-## Model export (TTS only)
+The receiving device needs:
 
-The ONNX models under `app/src/main/assets/models/` were produced by
-omatts's `export_onnx.py`, run against a Python venv with `pocket-tts`,
-`torch`, `onnx`, and `onnxruntime` installed.
+- Android 8.0 or newer
+- An ARM64 processor
+- Permission to install unknown apps
 
-Important: `export_onnx.py` imports a `pocket_tts.conditioners` module and a
-few symbols (e.g. `DEFAULT_LSD_DECODE_STEPS`) that later Pocket-TTS releases
-removed or renamed. Use an older pinned commit, verified working:
-`kyutai-labs/pocket-tts` commit `7db278e`. Install it with:
+The APK is approximately **159 MB**.
 
-```bash
-pip install --no-deps <path-to-that-checkout>
+Good transfer options include:
+
+- A Drive link
+- USB
+- Local file transfer
+
+Avoid sending it as a chat attachment.
+
+## Project layout
+
+```text
+app/src/main/
+├── java/com/jarvistts/
+│   ├── MainActivity.kt
+│   │   Activity lifecycle, coroutines, AudioRecord, and AudioTrack
+│   ├── JarvisScreen.kt
+│   │   Jetpack Compose UI
+│   ├── NativeSTT.kt
+│   │   JNI declarations for whisper.cpp
+│   ├── NativeLLM.kt
+│   │   JNI declarations for llama.cpp
+│   ├── NativeBridge.kt
+│   │   JNI declarations for the TTS engine
+│   ├── VoicePipeline.kt
+│   │   Transcript cleanup, VAD, and testable voice logic
+│   ├── ModelManager.kt
+│   │   Model discovery, download URLs, and model selection
+│   └── ModelDownloader.kt
+│       Model downloads and progress reporting
+│
+├── cpp/
+│   ├── CMakeLists.txt
+│   ├── omatts.cpp
+│   ├── jni_bridge.cpp
+│   ├── stt_jni_bridge.cpp
+│   └── llm_jni_bridge.cpp
+│
+├── assets/
+│   ├── models/
+│   │   TTS ONNX models and tokenizer
+│   └── voices/
+│       └── jarvis-03.wav
+│
+└── src/test/java/com/jarvistts/
+    └── VoicePipelineTest.kt
 ```
 
-then run `python export_onnx.py`. It exports 5 models, quantizes 3 of them
-to INT8, externalizes weights into `.onnx.data` sidecars, and trims down to
-one default variant per model (fp32 or int8, whichever the script picks).
-Copy the resulting `models/` directory into `app/src/main/assets/models/`.
+STT and LLM models are not included in `assets/`. They download the first time they are needed.
+
+The TTS model is currently bundled with the app.
+
+## Native libraries
+
+The native build creates three shared libraries:
+
+```text
+jarvis_tts
+jarvis_stt
+jarvis_llm
+```
+
+They contain:
+
+- `jarvis_tts` — omatts and ONNX Runtime
+- `jarvis_stt` — whisper.cpp
+- `jarvis_llm` — llama.cpp
+
+The build intentionally forces Release mode:
+
+```cmake
+CMAKE_BUILD_TYPE=Release
+```
+
+This is important. Without it, an Android Gradle Plugin issue can silently produce builds that are **30–80× slower**.
+
+See `AGENTS.md` for the full explanation.
+
+## Exporting the TTS models
+
+The bundled ONNX models were generated using omatts’s `export_onnx.py`.
+
+Use this specific Pocket-TTS commit:
+
+```text
+kyutai-labs/pocket-tts
+commit: 7db278e
+```
+
+Later Pocket-TTS versions removed or renamed modules and symbols required by the export script.
+
+Install the pinned checkout without installing its dependencies:
+
+```bash
+pip install --no-deps <path-to-pocket-tts-checkout>
+```
+
+The export environment needs:
+
+- `pocket-tts`
+- `torch`
+- `onnx`
+- `onnxruntime`
+
+Then run:
+
+```bash
+python export_onnx.py
+```
+
+The script:
+
+- Exports five models
+- Quantizes three models to INT8
+- Stores large weights in `.onnx.data` sidecar files
+- Keeps one default variant per model
+
+Copy the generated directory into:
+
+```text
+app/src/main/assets/models/
+```
 
 ## Licenses
 
-- Code (`omatts.cpp`, `parnoldx/omatts`): MIT. See `LICENSE`.
-- TTS model weights: derived from Kyutai Labs' Pocket-TTS, CC-BY-4.0. See
-  `app/src/main/assets/models/LICENSE-WEIGHTS.txt`.
-- whisper.cpp, llama.cpp: MIT.
-- Full attribution: `THIRD_PARTY_NOTICES.md`.
+- Project code and `omatts.cpp`: MIT
+- `whisper.cpp`: MIT
+- `llama.cpp`: MIT
+- TTS model weights: CC-BY-4.0
+- Full attribution: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+- TTS weight license: [`app/src/main/assets/models/LICENSE-WEIGHTS.txt`](app/src/main/assets/models/LICENSE-WEIGHTS.txt)
