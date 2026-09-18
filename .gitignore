@@ -27,3 +27,4 @@ Thumbs.db
 .cxx/
 .toolchain/
 node_modules/
+app/src/main/assets/voices/*.wav

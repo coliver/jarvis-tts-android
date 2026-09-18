@@ -1,13 +1,11 @@
 // JNI bridge for on-device LLM inference via llama.cpp. Mirrors the other
 // bridges' thin-wrapper style. Prompt formatting (chat template) is done on
 // the Kotlin side; this just tokenizes, decodes, and detokenizes.
-#include <algorithm>
 #include <android/log.h>
 #include <atomic>
 #include <chrono>
 #include <jni.h>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include "ggml.h"
@@ -20,8 +18,15 @@ struct LlmSession {
 };
 
 static int nThreads() {
-    unsigned hw = std::thread::hardware_concurrency();
-    return static_cast<int>(hw > 0 ? std::min(hw, 6u) : 4u);
+    // Tensor G3 is big.LITTLE (1 Cortex-X3 + 4 A715 + 4 A510). Same fix as
+    // stt_jni_bridge.cpp's nThreads(): ggml's thread pool (llama.cpp vendors
+    // its own copy, same synchronize-every-round design) waits on the
+    // slowest participating thread each round, so requesting more threads
+    // than the fast+mid cluster spills onto the slow LITTLE cores and makes
+    // generation SLOWER, not faster. Measured: uncapped at 6 threads,
+    // decode ran at ~1.0 tok/s; this was never applied to the LLM path when
+    // it was found for STT.
+    return 4;
 }
 
 struct ProgressCtx {

@@ -33,9 +33,49 @@ private const val AMPLITUDE_NORMALIZER = 3000.0f
 private const val LLM_N_CTX = 2048
 private const val LLM_MAX_TOKENS = 200
 
-private const val JARVIS_SYSTEM_PROMPT =
-    "You are JARVIS, a crisp, dry-witted, unfailingly polite British AI assistant. " +
-        "Keep replies short, spoken-aloud length, one or two sentences unless asked for more."
+// The platform minimum buffer size leaves almost no slack: any brief stall in
+// the native TTS synthesis loop (thermal throttling, a GC pause, CPU
+// contention right after LLM generation) drains it before the next chunk
+// arrives, which AudioFlinger surfaces as an audible underrun/restart glitch
+// (confirmed via logcat: "BUFFER TIMEOUT ... due to underrun"). A few times
+// the minimum gives synthesis room to catch up without the listener noticing.
+private const val AUDIO_TRACK_BUFFER_MULTIPLIER = 4
+
+private const val REPLY_LENGTH_HINT =
+    " Keep replies short, spoken-aloud length, one or two sentences unless asked for more."
+
+/** System prompt per voice, so the persona speaking matches the character
+ *  suggested by the cloned voice instead of every voice sounding like
+ *  JARVIS. Keyed by voice name (the .wav's filename without extension, see
+ *  ModelManager.listAvailableVoices), same character mapped to more than
+ *  one clip (data / data-wellington) share a prompt. A voice with no entry
+ *  here falls back to DEFAULT_PERSONA.
+ */
+private val VOICE_PERSONAS: Map<String, String> =
+    mapOf(
+        "jarvis" to
+            "You are JARVIS, a crisp, dry-witted, unfailingly polite British AI assistant." +
+            REPLY_LENGTH_HINT,
+        "guinan" to
+            "You are Guinan: warm, unhurried, and understated. Speak plainly and " +
+            "thoughtfully, without embellishment." + REPLY_LENGTH_HINT,
+        "data" to
+            "You are Data, a precise, formal, and literal android. Answer exactly what " +
+            "is asked, without idiom, slang, or excess emotion." + REPLY_LENGTH_HINT,
+        "data-wellington" to
+            "You are Data, a precise, formal, and literal android. Answer exactly what " +
+            "is asked, without idiom, slang, or excess emotion." + REPLY_LENGTH_HINT,
+        "picard" to
+            "You are Captain Jean-Luc Picard: measured, literate, and diplomatic." +
+            REPLY_LENGTH_HINT,
+        "enterprise" to
+            "You are a plain ship's computer. No character, no name, no fictional affect. " +
+            "Report status and findings directly, flat and factual, no personality " +
+            "layered on top." + REPLY_LENGTH_HINT,
+    )
+private val DEFAULT_PERSONA = VOICE_PERSONAS.getValue("jarvis")
+
+private fun personaFor(voiceName: String): String = VOICE_PERSONAS[voiceName] ?: DEFAULT_PERSONA
 
 class MainActivity : ComponentActivity() {
     private var sttHandle: Long = 0
@@ -89,6 +129,7 @@ class MainActivity : ComponentActivity() {
                     micEnabled = uiState.phase == Phase.IDLE || uiState.phase == Phase.ERROR,
                     onMicTap = ::onMicTap,
                     onModelSelect = ::onModelSelected,
+                    onVoiceSelect = ::onVoiceSelected,
                     onPauseToggle = ::onPauseToggle,
                     onStopTap = ::onStopTapped,
                     onNewSession = ::onNewSession,
@@ -104,6 +145,7 @@ class MainActivity : ComponentActivity() {
             try {
                 warmUp()
                 refreshAvailableModels()
+                refreshAvailableVoices()
                 uiState.phase = Phase.IDLE
                 uiState.caption = "Tap to talk"
             } catch (e: Exception) {
@@ -403,6 +445,28 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun refreshAvailableVoices() {
+        val voicesDir = File(filesDir, "voices")
+        val names = ModelManager.listAvailableVoices(voicesDir)
+        uiState.availableVoices = names
+        uiState.selectedVoiceName =
+            ModelManager.selectedVoiceName(this).takeIf { it in names }
+                ?: names.firstOrNull()
+                ?: ModelManager.DEFAULT_VOICE
+    }
+
+    /** Switching voices never touches ttsHandle, the name is just passed to
+     *  streamStart per utterance, so this is instant. Still idle-gated so a
+     *  pick can't land mid-utterance and change the voice out from under an
+     *  in-flight speak() call.
+     */
+    private fun onVoiceSelected(name: String) {
+        if (isBusy || uiState.phase != Phase.IDLE) return
+        if (name !in uiState.availableVoices) return
+        ModelManager.setSelectedVoiceName(this, name)
+        uiState.selectedVoiceName = name
+    }
+
     private fun ensureTtsLoaded() {
         if (ttsHandle != 0L) return
         val modelsDir = File(filesDir, "models")
@@ -435,7 +499,7 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) { beginStage("Thinking") }
             }
 
-            val prompt = NativeLLM.nativeFormatPrompt(llmHandle, JARVIS_SYSTEM_PROMPT, userText)
+            val prompt = NativeLLM.nativeFormatPrompt(llmHandle, personaFor(uiState.selectedVoiceName), userText)
 
             val genStart = System.currentTimeMillis()
             val reply = NativeLLM.nativeGenerate(llmHandle, prompt, LLM_MAX_TOKENS).trim()
@@ -527,6 +591,8 @@ class MainActivity : ComponentActivity() {
                 ensureTtsLoaded()
             }
 
+            val minBufferBytes =
+                AudioTrack.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
             val track =
                 AudioTrack.Builder()
                     .setAudioAttributes(
@@ -543,13 +609,15 @@ class MainActivity : ComponentActivity() {
                             .build(),
                     )
                     .setTransferMode(AudioTrack.MODE_STREAM)
+                    .setBufferSizeInBytes(minBufferBytes * AUDIO_TRACK_BUFFER_MULTIPLIER)
                     .build()
 
             currentTtsTrack = track
             uiState.isPaused = false
             track.play()
-            val streamCtx = NativeBridge.streamStart(ttsHandle, text, "jarvis-03")
+            val streamCtx = NativeBridge.streamStart(ttsHandle, Markdown.stripForSpeech(text), uiState.selectedVoiceName)
             check(streamCtx != 0L) { "ptt_stream_start failed" }
+            var framesWritten = 0L
             try {
                 while (true) {
                     if (stopRequested) break
@@ -559,6 +627,17 @@ class MainActivity : ComponentActivity() {
                     val chunk = NativeBridge.streamRead(streamCtx) ?: break
                     if (chunk.isNotEmpty()) {
                         track.write(chunk, 0, chunk.size, AudioTrack.WRITE_BLOCKING)
+                        framesWritten += chunk.size // mono float PCM: one sample is one frame
+                    }
+                }
+                // write() only guarantees the data is queued, not that it's been rendered
+                // yet -- stopping/releasing right after the last write clipped the tail of
+                // every sentence. Wait for the track to actually catch up to what was
+                // written before tearing it down, bounded so a stuck driver can't hang here.
+                if (!stopRequested) {
+                    val deadline = System.currentTimeMillis() + 3000
+                    while (track.playbackHeadPosition < framesWritten && System.currentTimeMillis() < deadline) {
+                        delay(20)
                     }
                 }
             } finally {
@@ -574,16 +653,24 @@ class MainActivity : ComponentActivity() {
         if (uiState.isPaused) currentTtsTrack?.pause() else currentTtsTrack?.play()
     }
 
+    /** Per-file, not per-directory: an earlier install's copy left files
+     *  behind in internal storage, and gating on "destDir is non-empty"
+     *  meant a newly added bundled asset (e.g. a second voice clip) was
+     *  silently never copied on an app update, only on a fresh install.
+     *  Existing files are left alone, so this stays cheap (an exists()
+     *  check per asset) on every launch after the first.
+     */
     private fun copyAssetsOnce(
         assetDir: String,
         destDir: File,
     ) {
-        if (destDir.exists() && destDir.listFiles()?.isNotEmpty() == true) return
         destDir.mkdirs()
         val files = assets.list(assetDir) ?: return
         for (name in files) {
+            val dest = File(destDir, name)
+            if (dest.exists()) continue
             assets.open("$assetDir/$name").use { input ->
-                File(destDir, name).outputStream().use { output ->
+                dest.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }

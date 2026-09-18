@@ -15,6 +15,8 @@ object ModelManager {
     private const val LLM_SUBDIR = "llm"
     private const val PREFS_NAME = "jarvis_model_prefs"
     private const val KEY_SELECTED_PATH = "selected_model_path"
+    private const val KEY_SELECTED_VOICE = "selected_voice"
+    private val VOICE_EXTENSIONS = setOf("wav", "mp3", "flac", "ogg", "m4a", "aac")
 
     const val DEFAULT_LLM_FILENAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
     const val DEFAULT_LLM_URL =
@@ -23,6 +25,8 @@ object ModelManager {
     const val STT_FILENAME = "ggml-tiny.en-q5_1.bin"
     const val STT_URL =
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$STT_FILENAME"
+
+    const val DEFAULT_VOICE = "jarvis"
 
     fun externalModelsDir(context: Context): File =
         File(context.getExternalFilesDir(null) ?: context.filesDir, LLM_SUBDIR).apply { mkdirs() }
@@ -52,6 +56,28 @@ object ModelManager {
         path: String,
     ) {
         prefs(context).edit().putString(KEY_SELECTED_PATH, path).apply()
+    }
+
+    /** Voice reference clips available for cloning, by name (no extension),
+     *  sorted. `voicesDir` is the app-internal copy of assets/voices/, not a
+     *  drop-in dir like externalModelsDir -- adding a voice today means
+     *  bundling a new clip in assets and rebuilding, there's no adb-push path
+     *  for this yet.
+     */
+    fun listAvailableVoices(voicesDir: File): List<String> =
+        voicesDir.listFiles { f -> f.isFile && f.extension.lowercase() in VOICE_EXTENSIONS }
+            .orEmpty()
+            .map { it.nameWithoutExtension }
+            .distinct()
+            .sorted()
+
+    fun selectedVoiceName(context: Context): String = prefs(context).getString(KEY_SELECTED_VOICE, DEFAULT_VOICE) ?: DEFAULT_VOICE
+
+    fun setSelectedVoiceName(
+        context: Context,
+        name: String,
+    ) {
+        prefs(context).edit().putString(KEY_SELECTED_VOICE, name).apply()
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
