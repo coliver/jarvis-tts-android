@@ -12,6 +12,7 @@ All notable changes to this project, newest first. Dates are commit dates.
 - CI workflow, and documentation for sharing builds via GitHub Releases.
 
 ### Changed
+- README corrected against the code, badges added; third-party notices now cover all dependencies and models.
 - Speech model switched from tiny.en to base.en for better accuracy in noise.
 
 ### Fixed

@@ -1,15 +1,20 @@
 # Jarvis TTS for Android
 
+| | |
+|---|---|
+| [![CI](https://github.com/coliver/jarvis-tts-android/actions/workflows/ci.yml/badge.svg)](https://github.com/coliver/jarvis-tts-android/actions/workflows/ci.yml)<br>[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)<br>![Lint: ktlint](https://img.shields.io/badge/lint-ktlint-orange) | ![Platform: Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)<br>![ABI: arm64-v8a](https://img.shields.io/badge/ABI-arm64--v8a-informational)<br>![On-device](https://img.shields.io/badge/100%25-on--device-success) |
+| ![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?logo=kotlin&logoColor=white)<br>![Jetpack Compose](https://img.shields.io/badge/Jetpack%20Compose-4285F4?logo=jetpackcompose&logoColor=white)<br>![C++](https://img.shields.io/badge/C%2B%2B-00599C?logo=cplusplus&logoColor=white) | ![whisper.cpp](https://img.shields.io/badge/STT-whisper.cpp-lightgrey)<br>![llama.cpp](https://img.shields.io/badge/LLM-llama.cpp-lightgrey)<br>![ONNX Runtime](https://img.shields.io/badge/TTS-ONNX%20Runtime-005CED?logo=onnx&logoColor=white) |
+
 A fully on-device voice assistant for Android.
 
-Tap **Ask Jarvis**, speak, and get a spoken response:
+Tap the mic, speak, and get a spoken response:
 
 1. 🎙️ Records your voice
 2. ✍️ Converts speech to text
 3. 🧠 Generates a reply
 4. 🔊 Reads the reply aloud
 
-No server, PC, or permanent network connection is required. Models download over HTTP the first time you use them or switch models.
+No server, PC, or permanent network connection is required. Models download over HTTPS the first time you use them or switch models.
 
 > Tested end-to-end on a Pixel 8 Pro.
 
@@ -30,11 +35,13 @@ For architecture notes and the current backlog, see [`AGENTS.md`](AGENTS.md).
 ## How it works
 
 ```text
-Tap "Ask Jarvis"
+Tap the mic
       ↓
 Voice activity detection
       ↓
 Whisper.cpp — speech to text
+      ↓
+Tool router — time, battery, timer, email, Wikipedia (skips the LLM on a match)
       ↓
 Llama.cpp — generates a reply
       ↓
@@ -45,7 +52,8 @@ AudioTrack — streams the audio
 
 - Recording stops automatically when you stop speaking; there's no button to hold down.
 - All three engines warm up in parallel when the app starts, each with its own loading/download progress.
-- Tap **Stop** at any point — listening, thinking, or speaking — to cancel that turn immediately.
+- Hold the mic at any point — listening, thinking, or speaking — to cancel that turn immediately. While speaking, a tap pauses or resumes playback.
+- Simple requests (time, battery, timers, drafting an email, Wikipedia lookups) are matched by keyword before the LLM and answered directly by the app.
 - Recent turns from the current conversation are included in each prompt, so follow-up questions work without repeating context, bounded by the loaded model's context window.
 
 ## Setup
@@ -171,7 +179,7 @@ Note: `adb install` does not work directly with UNC paths such as `\\wsl.localho
 |---|---|
 | Engine | `whisper.cpp` |
 | Default model | `ggml-base.en-q5_1.bin` (~57 MB) |
-| Download | Hugging Face, on first use |
+| Download | Hugging Face, on first use (SHA-256 verified) |
 
 ### Language model
 
@@ -179,7 +187,7 @@ Note: `adb install` does not work directly with UNC paths such as `\\wsl.localho
 |---|---|
 | Engine | `llama.cpp` |
 | Default model | `Llama-3.2-1B-Instruct-Q4_K_M.gguf` (~770 MB) |
-| Download | On first use |
+| Download | Hugging Face, on first use (SHA-256 verified) |
 
 To use a different llama.cpp-compatible model, push it to the device and select it from the model picker in the top bar while the app is idle:
 
@@ -207,12 +215,12 @@ STT and LLM models are downloaded instead of bundled so the APK stays around **1
 Every conversation is saved automatically as it happens — there's no manual save step.
 
 - **New** starts a fresh conversation. The current one is saved first if it has any turns.
-- **History** lists saved conversations. Tap one to resume it, or tap **x** to delete it.
+- **History** lists saved conversations. Tap one to resume it, tap **x** to delete it, or choose **Delete all** (with a confirmation) to clear everything.
 - Titles are generated automatically from the first thing you said.
 
 Sessions are stored as JSON files under the app's internal `files/sessions/` directory. A session is written after every completed, stopped, or errored turn, so a killed or backgrounded app loses at most the single in-flight turn.
 
-There is currently no size cap or automatic pruning — sessions accumulate indefinitely. Each one is small, so this is unlikely to matter in practice, but deletion is one-at-a-time from **History** only; there's no bulk-delete yet.
+There is currently no size cap or automatic pruning — sessions accumulate indefinitely. Each one is small, so this is unlikely to matter in practice.
 
 ## Project layout
 
@@ -229,6 +237,9 @@ app/src/main/
 │   ├── ModelDownloader.kt   Model downloads and progress reporting
 │   ├── ChatSession.kt       Saved-conversation data model and JSON encode/decode
 │   ├── SessionStore.kt      Filesystem CRUD for saved conversations
+│   ├── Tools.kt             Tool routing, prompt text, and spoken-email cleanup (pure, testable)
+│   ├── ToolRunner.kt        Android side of the tools: time, battery, timer, email intent
+│   ├── WebSearch.kt         Wikipedia lookup
 │   ├── MiniJson.kt          Dependency-free JSON reader and writer used by SessionStore
 │   ├── Markdown.kt          Minimal markdown parsing so LLM replies render (and are spoken) cleanly
 │   └── BreakoutGame.kt      A small hidden game shown while models are loading
@@ -250,6 +261,9 @@ app/src/main/
     ├── SessionStoreTest.kt
     ├── SessionCodecTest.kt
     ├── MiniJsonTest.kt
+    ├── ModelDownloaderTest.kt
+    ├── ToolsTest.kt
+    ├── WebSearchTest.kt
     ├── MarkdownTest.kt
     └── ModelManagerTest.kt
 ```
@@ -327,6 +341,10 @@ The link is `https://github.com/<user>/jarvis-tts-android/releases/latest`. The 
 | `whisper.cpp` | MIT |
 | `llama.cpp` | MIT |
 | TTS model weights | CC-BY-4.0 |
+| ONNX Runtime | MIT |
+| SentencePiece, AndroidX, Jetpack Compose, kotlinx.coroutines | Apache 2.0 |
+| Whisper model (downloaded) | MIT |
+| Llama 3.2 model (downloaded) | [Llama 3.2 Community License](https://www.llama.com/llama3_2/license/) (commercial use allowed, attribution required, not OSI open source) |
 
 Full attribution: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
 TTS weight license: [`app/src/main/assets/models/LICENSE-WEIGHTS.txt`](app/src/main/assets/models/LICENSE-WEIGHTS.txt)
