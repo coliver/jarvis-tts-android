@@ -41,7 +41,7 @@ private const val LLM_N_CTX = 2048
 private const val LLM_MAX_TOKENS = 200
 
 // Approximate download sizes shown in the not-on-Wi-Fi prompt; display only.
-private const val STT_SIZE_MB = 31
+private const val STT_SIZE_MB = 57
 private const val LLM_SIZE_MB = 770
 
 // Rest of LLM_N_CTX after reserving room for the generated reply. Also has to

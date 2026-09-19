@@ -14,7 +14,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # math-heavy code with zero optimization -- confirmed via compile_commands.json
 # showing no -O flag at all on ggml-cpu.c/stt_jni_bridge.cpp. This is almost
 # certainly why whisper's encoder pass measured 22-25 SECONDS for a few seconds
-# of tiny.en audio (should be well under 1s): FORCE this to Release regardless
+# of base.en audio (should be well under 1s): FORCE this to Release regardless
 # of what the Gradle build variant is. llama.cpp's separate ExternalProject
 # build already gets its own explicit -DCMAKE_BUILD_TYPE=Release below and was
 # unaffected by this bug, which is exactly why LLM inference was fine while

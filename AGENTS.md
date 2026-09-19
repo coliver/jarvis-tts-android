@@ -94,7 +94,7 @@ needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
 
 ## Model strategy
 
-- **STT** (`ggml-tiny.en-q5_1.bin`, ~31MB) and **LLM**
+- **STT** (`ggml-base.en-q5_1.bin`, ~57MB) and **LLM**
   (`Llama-3.2-1B-Instruct-Q4_K_M.gguf`, ~770MB) are downloaded on first use
   from public HuggingFace URLs (see `ModelManager.STT_URL` /
   `DEFAULT_LLM_URL`), not bundled in the APK. `ModelDownloader.kt` streams

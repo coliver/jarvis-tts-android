@@ -170,7 +170,7 @@ Note: `adb install` does not work directly with UNC paths such as `\\wsl.localho
 | | |
 |---|---|
 | Engine | `whisper.cpp` |
-| Default model | `ggml-tiny.en-q5_1.bin` (~31 MB) |
+| Default model | `ggml-base.en-q5_1.bin` (~57 MB) |
 | Download | Hugging Face, on first use |
 
 ### Language model
