@@ -173,6 +173,7 @@ fun JarvisScreen(
     onNewSession: () -> Unit = {},
     onSessionSelect: (String) -> Unit = {},
     onSessionDelete: (String) -> Unit = {},
+    onSessionDeleteAll: () -> Unit = {},
 ) {
     Column(
         modifier =
@@ -183,7 +184,7 @@ fun JarvisScreen(
                 .padding(horizontal = 20.dp),
     ) {
         Spacer(Modifier.height(20.dp))
-        TopBar(state, onModelSelect, onVoiceSelect, onNewSession, onSessionSelect, onSessionDelete)
+        TopBar(state, onModelSelect, onVoiceSelect, onNewSession, onSessionSelect, onSessionDelete, onSessionDeleteAll)
         Spacer(Modifier.height(14.dp))
         Box(Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
         Spacer(Modifier.height(18.dp))
@@ -247,6 +248,7 @@ private fun TopBar(
     onNewSession: () -> Unit,
     onSessionSelect: (String) -> Unit,
     onSessionDelete: (String) -> Unit,
+    onSessionDeleteAll: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -282,7 +284,7 @@ private fun TopBar(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                HistoryPicker(state, onNewSession, onSessionSelect, onSessionDelete)
+                HistoryPicker(state, onNewSession, onSessionSelect, onSessionDelete, onSessionDeleteAll)
                 Spacer(Modifier.width(14.dp))
                 ModelPicker(state, onModelSelect)
                 Spacer(Modifier.width(14.dp))
@@ -304,8 +306,33 @@ private fun HistoryPicker(
     onNewSession: () -> Unit,
     onSessionSelect: (String) -> Unit,
     onSessionDelete: (String) -> Unit,
+    onSessionDeleteAll: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var confirmDeleteAll by remember { mutableStateOf(false) }
+    if (confirmDeleteAll) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            title = { Text("Delete all history?", fontFamily = MonoFamily) },
+            text = {
+                Text(
+                    "This permanently deletes all ${state.sessions.size} saved conversations.",
+                    fontFamily = MonoFamily,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDeleteAll = false
+                        onSessionDeleteAll()
+                    },
+                ) { Text("Delete all", color = Warn, fontFamily = MonoFamily) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel", fontFamily = MonoFamily) }
+            },
+        )
+    }
     val enabled = state.phase == Phase.IDLE
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
@@ -356,6 +383,13 @@ private fun HistoryPicker(
                         },
                     )
                 }
+                DropdownMenuItem(
+                    text = { Text("Delete all", color = Warn, fontFamily = MonoFamily, fontSize = 13.sp) },
+                    onClick = {
+                        expanded = false
+                        confirmDeleteAll = true
+                    },
+                )
             }
         }
     }

@@ -109,6 +109,16 @@ class SessionStoreTest {
     }
 
     @Test
+    fun `deleteAll removes every session and returns the count`() {
+        store.create(turns("one"))
+        store.create(turns("two"))
+
+        assertEquals(2, store.deleteAll())
+        assertTrue(store.list().isEmpty())
+        assertEquals(0, store.deleteAll())
+    }
+
+    @Test
     fun `title falls back to the first user turn even if jarvis spoke first in the list`() {
         val created =
             store.create(

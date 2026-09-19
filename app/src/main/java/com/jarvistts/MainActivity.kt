@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
                     onNewSession = ::onNewSession,
                     onSessionSelect = ::onSessionSelect,
                     onSessionDelete = ::onSessionDelete,
+                    onSessionDeleteAll = ::onSessionDeleteAll,
                 )
             }
         }
@@ -249,6 +250,13 @@ class MainActivity : ComponentActivity() {
             currentSessionId = null
             uiState.turns.clear()
         }
+        refreshSessionList()
+    }
+
+    private fun onSessionDeleteAll() {
+        sessionStore.deleteAll()
+        currentSessionId = null
+        uiState.turns.clear()
         refreshSessionList()
     }
 

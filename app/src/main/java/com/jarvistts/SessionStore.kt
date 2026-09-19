@@ -75,6 +75,12 @@ class SessionStore(private val baseDir: File) {
 
     fun delete(id: String): Boolean = fileFor(id).delete()
 
+    /** Removes every saved session file. Returns how many were deleted. */
+    fun deleteAll(): Int {
+        val files = baseDir.listFiles { f -> f.isFile && f.extension == "json" } ?: return 0
+        return files.count { it.delete() }
+    }
+
     private fun write(session: ChatSession) {
         baseDir.mkdirs()
         fileFor(session.id).writeText(SessionCodec.encode(session))
