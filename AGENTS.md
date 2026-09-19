@@ -22,6 +22,10 @@ initiative unprompted. Read a file immediately before editing it, don't
 assume your in-context copy is current -- other sessions may be working in
 this same tree (see `ListAgents`).
 
+Always update `CHANGELOG.md` alongside any user-visible change (feature, fix,
+behavior change), under the current date, in the same working tree change so
+it lands in the same commit.
+
 ## Build, test, lint
 
 No Android Studio. Self-contained toolchain in `.toolchain/` (gitignored):

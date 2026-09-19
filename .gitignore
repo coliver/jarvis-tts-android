@@ -16,6 +16,7 @@ Thumbs.db
 *.aab
 *.ap_
 *.jar
+!gradle/wrapper/gradle-wrapper.jar
 *.war
 *.ear
 *.jks
