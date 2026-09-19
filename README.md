@@ -7,6 +7,8 @@
 
 A fully on-device voice assistant for Android.
 
+<img src="docs/screenshots/demo.gif" alt="Asking Jarvis a question on a Pixel 8 Pro" width="280" align="right">
+
 Tap the mic, speak, and get a spoken response:
 
 1. 🎙️ Records your voice
