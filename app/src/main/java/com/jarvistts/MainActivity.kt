@@ -1,17 +1,21 @@
 package com.jarvistts
 
 import android.Manifest
+import android.app.ActivityManager
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -20,8 +24,11 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 
 private const val SAMPLE_RATE = 24000
 private const val STT_SAMPLE_RATE = 16000
@@ -32,6 +39,10 @@ private const val SILENCE_RMS_THRESHOLD = 400.0
 private const val AMPLITUDE_NORMALIZER = 3000.0f
 private const val LLM_N_CTX = 2048
 private const val LLM_MAX_TOKENS = 200
+
+// Approximate download sizes shown in the not-on-Wi-Fi prompt; display only.
+private const val STT_SIZE_MB = 31
+private const val LLM_SIZE_MB = 770
 
 // Rest of LLM_N_CTX after reserving room for the generated reply. Also has to
 // cover the persona system prompt and the current utterance, not just history,
@@ -264,8 +275,99 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Best-effort advisory shown once at warm-up: doesn't block or change what gets
+     *  loaded, just gives the user a heads-up before a native OOM (caught, see
+     *  llm_jni_bridge.cpp's nativeInit, but still a load failure) surprises them.
+     */
+    private fun checkLowMemory() {
+        val am = getSystemService(ActivityManager::class.java) ?: return
+        val info = ActivityManager.MemoryInfo()
+        am.getMemoryInfo(info)
+        if (ModelManager.isLowMemoryDevice(info.totalMem)) {
+            val totalMb = info.totalMem / (1024 * 1024)
+            uiState.lowMemoryWarning =
+                "This device has ~${totalMb}MB RAM. The default language model " +
+                "(~770MB) may fail to load; if it does, try a smaller .gguf from the model picker."
+        }
+    }
+
+    /** True if the active network is unmetered (Wi-Fi, ethernet) or its metered
+     *  status can't be determined -- fails open, since this is a courtesy heads-up
+     *  before a large download, not a hard data-saver guard.
+     */
+    private fun isOnUnmeteredNetwork(): Boolean {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return true
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return true
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    }
+
+    private val meteredGate = Mutex()
+    private var meteredDownloadConfirmed = false
+
+    /** Suspends until the user picks a side of the "not on Wi-Fi" dialog when the
+     *  active network is metered; returns immediately (no prompt) on Wi-Fi/ethernet
+     *  or once the user has already said yes this session. Serialized so the
+     *  parallel STT/LLM loads can't race two dialogs onto one uiState slot, and
+     *  also called from the lazy re-load paths so a "Wait for Wi-Fi" answer at
+     *  warm-up can't be bypassed by tapping the mic afterwards.
+     */
+    private suspend fun confirmMeteredDownloadIfNeeded(
+        label: String,
+        sizeMb: Int,
+    ): Boolean =
+        meteredGate.withLock {
+            if (meteredDownloadConfirmed || isOnUnmeteredNetwork()) return@withLock true
+            val decision = CompletableDeferred<Boolean>()
+            withContext(Dispatchers.Main) {
+                uiState.meteredDownloadPrompt =
+                    MeteredDownloadPrompt(
+                        label = label,
+                        sizeMb = sizeMb,
+                        onProceed = { decision.complete(true) },
+                        onCancel = { decision.complete(false) },
+                    )
+            }
+            val proceed = decision.await()
+            withContext(Dispatchers.Main) { uiState.meteredDownloadPrompt = null }
+            if (proceed) meteredDownloadConfirmed = true
+            proceed
+        }
+
+    private suspend fun requireDownloadConfirmed(
+        label: String,
+        sizeMb: Int,
+    ) {
+        if (!confirmMeteredDownloadIfNeeded(label, sizeMb)) {
+            throw IOException("Download cancelled: waiting for Wi-Fi")
+        }
+    }
+
+    private class PendingDownload(val label: String, val sizeMb: Int)
+
+    /** What warm-up is about to download, if anything, mirroring the same
+     *  "file missing" checks ensureSttLoaded/ensureLlmLoaded use. Computed once
+     *  up front so a single combined prompt covers both -- those two loads run
+     *  in parallel, so gating each separately would race two dialogs onto one
+     *  uiState slot and leave the loser's coroutine suspended forever.
+     */
+    private fun pendingDownload(): PendingDownload? {
+        val sttMissing = !File(File(filesDir, "stt"), ModelManager.STT_FILENAME).exists()
+        val hasSelectedModel = ModelManager.selectedModelPath(this)?.let { File(it).exists() } == true
+        val llmMissing =
+            !hasSelectedModel &&
+                !File(ModelManager.bundledModelsDir(this), ModelManager.DEFAULT_LLM_FILENAME).exists()
+        return when {
+            sttMissing && llmMissing -> PendingDownload("speech and language models", STT_SIZE_MB + LLM_SIZE_MB)
+            sttMissing -> PendingDownload("speech model", STT_SIZE_MB)
+            llmMissing -> PendingDownload("language model", LLM_SIZE_MB)
+            else -> null
+        }
+    }
+
     private suspend fun warmUp() =
         coroutineScope {
+            checkLowMemory()
+            pendingDownload()?.let { requireDownloadConfirmed(it.label, it.sizeMb) }
             val startedAt = System.currentTimeMillis()
             // whisper.cpp and omatts/onnxruntime have no load-progress hooks, so those two
             // just get an elapsed-time counter; llama.cpp exposes a real progress callback,
@@ -327,6 +429,7 @@ class MainActivity : ComponentActivity() {
         val modelDir = File(filesDir, "stt")
         val modelFile = File(modelDir, ModelManager.STT_FILENAME)
         if (!modelFile.exists()) {
+            requireDownloadConfirmed("speech model", STT_SIZE_MB)
             withContext(Dispatchers.Main) { beginStage("Downloading speech model") }
             ModelDownloader.download(ModelManager.STT_URL, modelFile, ModelManager.STT_SHA256) { fraction ->
                 sttState = "downloading... ${(fraction * 100).toInt()}%"
@@ -344,6 +447,7 @@ class MainActivity : ComponentActivity() {
             val modelDir = ModelManager.bundledModelsDir(this)
             val modelFile = File(modelDir, ModelManager.DEFAULT_LLM_FILENAME)
             if (!modelFile.exists()) {
+                requireDownloadConfirmed("language model", LLM_SIZE_MB)
                 withContext(Dispatchers.Main) { beginStage("Downloading language model") }
                 ModelDownloader.download(ModelManager.DEFAULT_LLM_URL, modelFile, ModelManager.DEFAULT_LLM_SHA256) { fraction ->
                     llmState = "downloading... ${(fraction * 100).toInt()}%"

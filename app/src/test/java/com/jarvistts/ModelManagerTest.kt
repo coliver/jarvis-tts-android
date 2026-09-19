@@ -1,6 +1,7 @@
 package com.jarvistts
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -130,5 +131,17 @@ class ModelManagerTest {
         val name = ModelManager.resolveSelectedModelName(null, listOf("custom.gguf"))
 
         assertEquals("custom.gguf", name)
+    }
+
+    @Test
+    fun `isLowMemoryDevice flags a 2GB device but not an 8GB one`() {
+        assertTrue(ModelManager.isLowMemoryDevice(2L * 1024 * 1024 * 1024))
+        assertFalse(ModelManager.isLowMemoryDevice(8L * 1024 * 1024 * 1024))
+    }
+
+    @Test
+    fun `isLowMemoryDevice treats an unreadable total as unknown, not low`() {
+        assertFalse(ModelManager.isLowMemoryDevice(0L))
+        assertFalse(ModelManager.isLowMemoryDevice(-1L))
     }
 }

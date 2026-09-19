@@ -155,5 +155,18 @@ object ModelManager {
             ?: DEFAULT_LLM_FILENAME
     }
 
+    // Below this, a ~770MB gguf load plus whisper.cpp/TTS's own working set risks a
+    // native allocation failure (see llm_jni_bridge.cpp's try/catch around llama_init,
+    // which turns that into a recoverable "llama_init failed" instead of a process
+    // crash -- but a heads-up before the attempt is friendlier than just letting the
+    // load fail). A rough floor, not a measured cliff for a specific device.
+    private const val LOW_MEMORY_THRESHOLD_BYTES = 3L * 1024 * 1024 * 1024
+
+    /** [totalRamBytes] <= 0 means the caller couldn't read it (e.g. ActivityManager
+     *  unavailable); treated as "don't know", not "low", so this never warns from an
+     *  unrelated failure to query memory.
+     */
+    fun isLowMemoryDevice(totalRamBytes: Long): Boolean = totalRamBytes in 1..LOW_MEMORY_THRESHOLD_BYTES
+
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 }

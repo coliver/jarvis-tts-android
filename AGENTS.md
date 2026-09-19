@@ -176,11 +176,15 @@ Roughly in priority order. Pick from the top unless told otherwise.
    `STT_SHA256`/`DEFAULT_LLM_SHA256`, sourced from HuggingFace's
    `x-linked-etag` header, not a local computation. See the Model strategy
    section above.
-2. **No crash resilience around the native layer.** A malformed `.gguf` or
-   OOM on a low-RAM device can segfault `llama_init`/`whisper_init` and take
-   the whole process down -- no crash reporting, no safe-mode recovery. At
-   minimum, catch what's catchable around native init calls and consider a
-   RAM-tier check before offering the default (~770MB) model.
+2. ~~No crash resilience around the native layer.~~ Done 2026-09-19 (partly):
+   `nativeInit` in the LLM, STT and TTS JNI bridges now catches C++
+   exceptions (e.g. `std::bad_alloc`) and returns 0, which Kotlin already
+   reports as a load failure, instead of aborting the process. Also added
+   `ModelManager.isLowMemoryDevice` (<= 3GB total RAM) driving a dismissible
+   advisory banner at warm-up. A true native segfault/SIGABRT still can't be
+   caught; no crash reporting was added. Unverified: the banner and the
+   catch paths were never exercised on-device (only compiled, launched, and
+   checked for crashes in logcat).
 3. **No CI.** `ktlintCheck` and `testDebugUnitTest` both run in seconds; add
    a GitHub Actions workflow that runs them on push/PR so "you are the CI"
    (see Build/test/lint above) stops being literally true.
@@ -190,8 +194,12 @@ Roughly in priority order. Pick from the top unless told otherwise.
 5. Session data (`SessionStore`) is unencrypted, unbounded JSON on disk --
    worth a size cap and, if this is ever used for anything sensitive, an
    at-rest encryption pass.
-6. No Wi-Fi-only guard/warning before the ~800MB combined STT+LLM
-   first-launch download over a metered connection.
+6. ~~No Wi-Fi-only guard before the first-launch download.~~ Done
+   2026-09-19: `MainActivity.warmUp()` shows a "Not on Wi-Fi" dialog
+   (Download anyway / Wait for Wi-Fi) with the combined pending size when the
+   active network is metered; the lazy load paths honor the same gate.
+   Fails open if network state can't be read. Dialog not yet seen on-device
+   (Wi-Fi is unmetered and models already present on the test phone).
 7. No wake word, no persistent background service, one-shot tap-to-talk
    only (carried over).
 8. No instrumented UI tests for `MainActivity`/`JarvisScreen` (carried

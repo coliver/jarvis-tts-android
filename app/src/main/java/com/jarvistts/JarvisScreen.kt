@@ -32,10 +32,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -93,6 +95,18 @@ enum class Speaker { USER, JARVIS }
 
 data class Turn(val speaker: Speaker, val text: String, val durationMs: Long)
 
+/** A pending confirmation before an initial model download proceeds over a
+ *  metered connection (see MainActivity.confirmMeteredDownloadIfNeeded).
+ *  Non-null shows the dialog; the two callbacks resolve the coroutine
+ *  suspended waiting on the user's choice.
+ */
+data class MeteredDownloadPrompt(
+    val label: String,
+    val sizeMb: Int,
+    val onProceed: () -> Unit,
+    val onCancel: () -> Unit,
+)
+
 private fun formatDuration(ms: Long): String = if (ms < 1000) "${ms}ms" else "%.1fs".format(ms / 1000.0)
 
 private const val WAVE_BARS = 40
@@ -109,6 +123,8 @@ class JarvisUiState {
     var llmProgress by mutableStateOf(0f)
     var isPaused by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
+    var lowMemoryWarning by mutableStateOf<String?>(null)
+    var meteredDownloadPrompt by mutableStateOf<MeteredDownloadPrompt?>(null)
     var availableModels by mutableStateOf<List<String>>(emptyList())
     var selectedModelName by mutableStateOf("")
     var availableVoices by mutableStateOf<List<String>>(emptyList())
@@ -187,9 +203,39 @@ fun JarvisScreen(
             TranscriptLog(state, modifier = Modifier.weight(1f))
         }
 
+        state.lowMemoryWarning?.let { warning ->
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = warning,
+                color = Warn,
+                fontFamily = MonoFamily,
+                fontSize = 11.sp,
+                modifier = Modifier.clickable { state.lowMemoryWarning = null },
+            )
+        }
         Spacer(Modifier.height(12.dp))
         MicControl(state, micEnabled, onMicTap, onPauseToggle, onStopTap)
         Spacer(Modifier.height(28.dp))
+    }
+
+    state.meteredDownloadPrompt?.let { prompt ->
+        AlertDialog(
+            onDismissRequest = prompt.onCancel,
+            title = { Text("Not on Wi-Fi", fontFamily = MonoFamily) },
+            text = {
+                Text(
+                    "Downloading the ${prompt.label} (~${prompt.sizeMb}MB) over this connection " +
+                        "may use mobile data. Continue?",
+                    fontFamily = MonoFamily,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = prompt.onProceed) { Text("Download anyway", fontFamily = MonoFamily) }
+            },
+            dismissButton = {
+                TextButton(onClick = prompt.onCancel) { Text("Wait for Wi-Fi", fontFamily = MonoFamily) }
+            },
+        )
     }
 }
 
