@@ -172,6 +172,10 @@ Java_com_jarvistts_NativeLLM_nativeGenerate(JNIEnv *env, jobject, jlong handle, 
     llama_model *model = session->model;
     llama_context *ctx = session->ctx;
     session->cancelRequested.store(false);
+    // Every call gets the full prompt (persona + history + utterance), so start from an
+    // empty KV cache. Without this, positions keep accumulating across turns until the
+    // 2048-token context is full and llama_decode fails instantly, returning "".
+    llama_kv_cache_clear(ctx);
 
     const char *prompt_chars = env->GetStringUTFChars(prompt, nullptr);
     std::string prompt_str(prompt_chars);
