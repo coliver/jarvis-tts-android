@@ -98,8 +98,14 @@ needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
   (`Llama-3.2-1B-Instruct-Q4_K_M.gguf`, ~770MB) are downloaded on first use
   from public HuggingFace URLs (see `ModelManager.STT_URL` /
   `DEFAULT_LLM_URL`), not bundled in the APK. `ModelDownloader.kt` streams
-  to a `.part` file and renames on success so a killed download can't look
-  valid.
+  to a `.part` file, hashing as it writes, and only renames to the final
+  name if the SHA-256 matches `ModelManager.STT_SHA256`/`DEFAULT_LLM_SHA256`
+  -- so neither a killed download nor a completed-but-corrupt one (bit flip,
+  a truncating proxy that still returns 200) can look like a valid model
+  file. Those hash constants came from the `x-linked-etag` response header
+  on a HEAD request to the model URL (HuggingFace's Git-LFS content hash),
+  not a local computation -- re-derive them the same way if the URLs are
+  ever repointed at different files.
 - **TTS** (Pocket-TTS/omatts ONNX set + voice sample, ~190MB) is still
   bundled in `app/src/main/assets/`. Those files are custom-exported via a
   local Python pipeline (`export_onnx.py`, see README), not available at
@@ -163,11 +169,13 @@ Not done / open follow-ups:
 
 Roughly in priority order. Pick from the top unless told otherwise.
 
-1. **Downloaded models have no integrity check.** `ModelDownloader` renames
-   `.part` -> final on success, which guards a *killed* download but not a
-   *completed-but-corrupt* one (bit flip, a proxy that truncates but still
-   returns 200). Add a checksum (SHA-256) verification step against a known
-   hash for `STT_URL`/`DEFAULT_LLM_URL` before the rename.
+1. ~~Downloaded models have no integrity check.~~ Done 2026-09-19:
+   `ModelDownloader.download()` now takes an `expectedSha256` param, hashes
+   the `.part` file as it streams, and only renames to the final name on a
+   match (mismatch deletes the `.part` and throws). `ModelManager` carries
+   `STT_SHA256`/`DEFAULT_LLM_SHA256`, sourced from HuggingFace's
+   `x-linked-etag` header, not a local computation. See the Model strategy
+   section above.
 2. **No crash resilience around the native layer.** A malformed `.gguf` or
    OOM on a low-RAM device can segfault `llama_init`/`whisper_init` and take
    the whole process down -- no crash reporting, no safe-mode recovery. At

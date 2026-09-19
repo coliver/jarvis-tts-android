@@ -23,9 +23,17 @@ object ModelManager {
     const val DEFAULT_LLM_URL =
         "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/$DEFAULT_LLM_FILENAME"
 
+    // Git LFS sha256 oid for the file above, from the `x-linked-etag` response header on a
+    // HEAD request to DEFAULT_LLM_URL -- HuggingFace's LFS-backed content hash, not something
+    // computed locally. Update this if DEFAULT_LLM_URL is ever repointed at a different file.
+    const val DEFAULT_LLM_SHA256 = "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83"
+
     const val STT_FILENAME = "ggml-tiny.en-q5_1.bin"
     const val STT_URL =
         "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$STT_FILENAME"
+
+    // Same provenance as DEFAULT_LLM_SHA256 above, for STT_URL.
+    const val STT_SHA256 = "c77c5766f1cef09b6b7d47f21b546cbddd4157886b3b5d6d4f709e91e66c7c2b"
 
     const val DEFAULT_VOICE = "jarvis"
 

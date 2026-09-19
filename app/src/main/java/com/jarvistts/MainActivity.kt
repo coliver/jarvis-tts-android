@@ -328,7 +328,7 @@ class MainActivity : ComponentActivity() {
         val modelFile = File(modelDir, ModelManager.STT_FILENAME)
         if (!modelFile.exists()) {
             withContext(Dispatchers.Main) { beginStage("Downloading speech model") }
-            ModelDownloader.download(ModelManager.STT_URL, modelFile) { fraction ->
+            ModelDownloader.download(ModelManager.STT_URL, modelFile, ModelManager.STT_SHA256) { fraction ->
                 sttState = "downloading... ${(fraction * 100).toInt()}%"
                 sttProgress = fraction
             }
@@ -345,7 +345,7 @@ class MainActivity : ComponentActivity() {
             val modelFile = File(modelDir, ModelManager.DEFAULT_LLM_FILENAME)
             if (!modelFile.exists()) {
                 withContext(Dispatchers.Main) { beginStage("Downloading language model") }
-                ModelDownloader.download(ModelManager.DEFAULT_LLM_URL, modelFile) { fraction ->
+                ModelDownloader.download(ModelManager.DEFAULT_LLM_URL, modelFile, ModelManager.DEFAULT_LLM_SHA256) { fraction ->
                     llmState = "downloading... ${(fraction * 100).toInt()}%"
                     llmProgress = fraction
                 }
