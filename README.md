@@ -9,18 +9,28 @@ Tap **Ask Jarvis**, speak, and get a spoken response:
 3. 🧠 Generates a reply
 4. 🔊 Reads the reply aloud
 
-No server, PC, or permanent network connection is required.
-
-Models download over HTTP the first time you use them or switch models.
+No server, PC, or permanent network connection is required. Models download over HTTP the first time you use them or switch models.
 
 > Tested end-to-end on a Pixel 8 Pro.
 
-For build details, architecture notes, and the current backlog, see [`AGENTS.md`](AGENTS.md).
+For architecture notes and the current backlog, see [`AGENTS.md`](AGENTS.md).
+
+## Contents
+
+- [How it works](#how-it-works)
+- [Setup](#setup)
+- [Models](#models)
+- [Session history](#session-history)
+- [Project layout](#project-layout)
+- [Native libraries](#native-libraries)
+- [Exporting the TTS models](#exporting-the-tts-models)
+- [Sharing the APK](#sharing-the-apk)
+- [Licenses](#licenses)
 
 ## How it works
 
 ```text
-Tap “Ask Jarvis”
+Tap "Ask Jarvis"
       ↓
 Voice activity detection
       ↓
@@ -33,138 +43,78 @@ Pocket-TTS / omatts — text to speech
 AudioTrack — streams the audio
 ```
 
-Recording stops automatically when you stop speaking. You do not need to hold down a button for a fixed amount of time.
+- Recording stops automatically when you stop speaking; there's no button to hold down.
+- All three engines warm up in parallel when the app starts, each with its own loading/download progress.
+- Tap **Stop** at any point — listening, thinking, or speaking — to cancel that turn immediately.
 
-All three engines warm up in parallel when the app starts. Loading and download progress is shown for each engine.
+## Setup
 
-Tap **Stop** while Jarvis is listening, thinking, or speaking to cancel that turn immediately.
+You do not need Android Studio. Everything below runs from a WSL/Linux command line.
 
-## Models
+### 1. Get the toolchain
 
-### Speech-to-text
+The project keeps its own toolchain inside the repository's gitignored `.toolchain/` directory, so nothing needs to be installed system-wide:
 
-- **Engine:** `whisper.cpp`
-- **Default model:** `ggml-tiny.en-q5_1.bin`
-- **Size:** Approximately 31 MB
-- **Download:** Hugging Face, on first use
+| Tool | Version |
+|---|---|
+| JDK | 17 (Temurin) |
+| Android command-line tools | latest |
+| Android platform | 34 |
+| Android Build Tools | 34.0.0 |
+| Android NDK | 27.2.12479018 |
+| CMake | 3.31.6 (3.28+ required) |
+| Ninja | latest |
 
-### Language model
+### 2. Point Gradle at the SDK
 
-- **Engine:** `llama.cpp`
-- **Default model:** `Llama-3.2-1B-Instruct-Q4_K_M.gguf`
-- **Size:** Approximately 770 MB
-- **Download:** On first use
-
-You can use a different llama.cpp-compatible model:
-
-```bash
-adb push model.gguf \
-  /sdcard/Android/data/com.jarvistts/files/llm/
-```
-
-Then select it from the model picker in the top bar while the app is idle.
-
-Chat formatting is detected automatically from the loaded model. No code changes are needed.
-
-### Text-to-speech
-
-- **Engine:** Pocket-TTS through [`parnoldx/omatts`](https://github.com/parnoldx/omatts)
-- **Models:** Bundled in `app/src/main/assets/`
-- **Download:** Not currently available for the custom-exported models
-
-STT and LLM models are downloaded instead of bundled so the APK stays around **159 MB**, rather than approaching 1 GB.
-
-## Session history
-
-Every conversation is saved automatically as it happens. No manual save step is needed.
-
-- **New** starts a fresh conversation. The current one is saved first if it has any turns.
-- **History** lists saved conversations. Tap one to resume it, or tap **x** to delete it.
-
-Sessions are stored as JSON files under the app's internal `files/sessions/` directory. A session is written after every completed, stopped, or errored turn, so a killed or backgrounded app loses at most the single in-flight turn.
-
-Titles are generated automatically from the first thing you said.
-
-There is currently no size cap or automatic pruning. Sessions accumulate indefinitely in internal storage. Each one is small, so this is unlikely to matter in practice, but there is no bulk-delete option yet, only one at a time from **History**.
-
-## Build requirements
-
-You do not need Android Studio.
-
-The project keeps its toolchain inside the repository’s gitignored `.toolchain/` directory:
-
-- JDK 17 — Temurin
-- Android command-line tools
-- Android platform 34
-- Android Build Tools 34.0.0
-- Android NDK 27.2.12479018
-- CMake 3.31.6
-- Ninja
-
-The project requires:
-
-- CMake 3.28 or newer
-- Android NDK 27.x
-- WSL/Linux command line
-
-`local.properties` should point to:
+Create or edit `local.properties` in the repo root:
 
 ```text
 sdk.dir=<repo>/.toolchain/android-sdk
 ```
 
-## Build, test, and lint
-
-Set the environment variables:
+### 3. Set environment variables
 
 ```bash
 export JAVA_HOME=<repo>/.toolchain/jdk-17.0.20.1+1
 export ANDROID_HOME=<repo>/.toolchain/android-sdk
 ```
 
-Build the debug APK:
+### 4. Build
 
 ```bash
 ./gradlew assembleDebug
 ```
 
-Run unit tests:
-
-```bash
-./gradlew testDebugUnitTest
-```
-
-Run lint checks:
-
-```bash
-./gradlew ktlintCheck
-```
-
-Automatically fix formatting:
-
-```bash
-./gradlew ktlintFormat
-```
-
-Generate a test coverage report:
-
-```bash
-./gradlew jacocoTestReport
-```
-
-The APK will be created at:
+The APK is written to:
 
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
 
-## Install on a phone from WSL2
+### 5. Test and lint (optional)
 
-WSL2 usually cannot access a phone over USB directly.
+```bash
+./gradlew testDebugUnitTest     # unit tests
+./gradlew ktlintCheck           # lint
+./gradlew ktlintFormat          # auto-fix formatting
+./gradlew jacocoTestReport      # coverage report
+```
 
-Choose one of these options.
+### 6. Install on your phone
 
-### Option 1: Wireless debugging
+On native Linux (or macOS, or WSL with USB passthrough already configured), plug the phone in over USB, enable **USB debugging** in Developer Options, and run:
+
+```bash
+adb install app/build/outputs/apk/debug/app-debug.apk
+```
+
+If `adb devices` shows the phone as `unauthorized`, accept the RSA key prompt on the phone screen and re-run it. If it shows `no permissions`, your user likely needs a udev rule for the device — see [Android udev rules](https://github.com/M0Rf30/android-udev-rules) — or fall back to `sudo adb install ...`.
+
+**WSL2 usually can't reach a phone over USB directly**, since there's no USB passthrough by default. Use one of these instead:
+
+<details>
+<summary><strong>Option A — Wireless debugging</strong></summary>
 
 1. Enable **Wireless debugging** in Android Developer Options.
 2. Pair the phone:
@@ -185,82 +135,102 @@ Choose one of these options.
    adb install app/build/outputs/apk/debug/app-debug.apk
    ```
 
-Wireless debugging can be unreliable during large file transfers.
+This can be unreliable during large file transfers.
 
-### Option 2: Windows ADB over USB
+</details>
 
-If Windows already detects the phone with ADB:
+<details>
+<summary><strong>Option B — Windows ADB over USB</strong></summary>
 
-1. Build the APK in WSL.
-2. Copy it to a Windows path.
-3. Install it using Windows ADB through PowerShell.
+Use this if Windows already detects the phone with ADB.
 
-Example:
+1. Build the APK in WSL (step 4 above).
+2. Copy it to a Windows-visible path:
+
+   ```bash
+   cp app/build/outputs/apk/debug/app-debug.apk \
+     /mnt/c/Users/<you>/AppData/Local/Temp/
+   ```
+
+3. Install it from PowerShell using Windows' `adb`:
+
+   ```powershell
+   adb install $env:TEMP\app-debug.apk
+   ```
+
+Note: `adb install` does not work directly with UNC paths such as `\\wsl.localhost\...`.
+
+</details>
+
+## Models
+
+### Speech-to-text
+
+| | |
+|---|---|
+| Engine | `whisper.cpp` |
+| Default model | `ggml-tiny.en-q5_1.bin` (~31 MB) |
+| Download | Hugging Face, on first use |
+
+### Language model
+
+| | |
+|---|---|
+| Engine | `llama.cpp` |
+| Default model | `Llama-3.2-1B-Instruct-Q4_K_M.gguf` (~770 MB) |
+| Download | On first use |
+
+To use a different llama.cpp-compatible model, push it to the device and select it from the model picker in the top bar while the app is idle:
 
 ```bash
-cp app/build/outputs/apk/debug/app-debug.apk \
-  /mnt/c/Users/<you>/AppData/Local/Temp/
+adb push model.gguf \
+  /sdcard/Android/data/com.jarvistts/files/llm/
 ```
 
-Then run this in PowerShell:
+Chat formatting is detected automatically from the loaded model — no code changes needed.
 
-```powershell
-adb install $env:TEMP\app-debug.apk
-```
+### Text-to-speech
 
-`adb install` does not work directly with UNC paths such as:
+| | |
+|---|---|
+| Engine | Pocket-TTS through [`parnoldx/omatts`](https://github.com/parnoldx/omatts) |
+| Models | Bundled in `app/src/main/assets/` |
+| Download | Not currently available for the custom-exported models |
 
-```text
-\\wsl.localhost\...
-```
+Five voice samples ship in `app/src/main/assets/voices/`, each paired with a personality prompt in `app/src/main/assets/personas.json`: `jarvis`, `guinan`, `data`, `picard`, and `enterprise`. Pick one from the voice picker in the top bar while the app is idle.
 
-## Sharing the APK
+STT and LLM models are downloaded instead of bundled so the APK stays around **175 MB**, rather than approaching 1 GB.
 
-The debug APK can be sideloaded onto another device.
+## Session history
 
-The receiving device needs:
+Every conversation is saved automatically as it happens — there's no manual save step.
 
-- Android 8.0 or newer
-- An ARM64 processor
-- Permission to install unknown apps
+- **New** starts a fresh conversation. The current one is saved first if it has any turns.
+- **History** lists saved conversations. Tap one to resume it, or tap **x** to delete it.
+- Titles are generated automatically from the first thing you said.
 
-The APK is approximately **159 MB**.
+Sessions are stored as JSON files under the app's internal `files/sessions/` directory. A session is written after every completed, stopped, or errored turn, so a killed or backgrounded app loses at most the single in-flight turn.
 
-Good transfer options include:
-
-- A Drive link
-- USB
-- Local file transfer
-
-Avoid sending it as a chat attachment.
+There is currently no size cap or automatic pruning — sessions accumulate indefinitely. Each one is small, so this is unlikely to matter in practice, but deletion is one-at-a-time from **History** only; there's no bulk-delete yet.
 
 ## Project layout
 
 ```text
 app/src/main/
 ├── java/com/jarvistts/
-│   ├── MainActivity.kt
-│   │   Activity lifecycle, coroutines, AudioRecord, and AudioTrack
-│   ├── JarvisScreen.kt
-│   │   Jetpack Compose UI
-│   ├── NativeSTT.kt
-│   │   JNI declarations for whisper.cpp
-│   ├── NativeLLM.kt
-│   │   JNI declarations for llama.cpp
-│   ├── NativeBridge.kt
-│   │   JNI declarations for the TTS engine
-│   ├── VoicePipeline.kt
-│   │   Transcript cleanup, VAD, and testable voice logic
-│   ├── ModelManager.kt
-│   │   Model discovery, download URLs, and model selection
-│   ├── ModelDownloader.kt
-│   │   Model downloads and progress reporting
-│   ├── ChatSession.kt
-│   │   Saved-conversation data model and JSON encode/decode
-│   ├── SessionStore.kt
-│   │   Filesystem CRUD for saved conversations
-│   └── MiniJson.kt
-│       Dependency-free JSON reader and writer used by SessionStore
+│   ├── MainActivity.kt      Activity lifecycle, coroutines, AudioRecord, and AudioTrack
+│   ├── JarvisScreen.kt      Jetpack Compose UI
+│   ├── NativeSTT.kt         JNI declarations for whisper.cpp
+│   ├── NativeLLM.kt         JNI declarations for llama.cpp
+│   ├── NativeBridge.kt      JNI declarations for the TTS engine
+│   ├── VoicePipeline.kt     Transcript cleanup, VAD, and testable voice logic
+│   ├── ModelManager.kt      Model discovery, download URLs, and model selection
+│   ├── ModelDownloader.kt   Model downloads and progress reporting
+│   ├── ChatSession.kt       Saved-conversation data model and JSON encode/decode
+│   ├── SessionStore.kt      Filesystem CRUD for saved conversations
+│   ├── MiniJson.kt          Dependency-free JSON reader and writer used by SessionStore
+│   ├── Markdown.kt          Minimal markdown parsing so LLM replies render (and are spoken) cleanly
+│   └── BreakoutGame.kt      A small hidden game shown while models are loading
 │
 ├── cpp/
 │   ├── CMakeLists.txt
@@ -270,98 +240,80 @@ app/src/main/
 │   └── llm_jni_bridge.cpp
 │
 ├── assets/
-│   ├── models/
-│   │   TTS ONNX models and tokenizer
-│   └── voices/
-│       └── jarvis-03.wav
+│   ├── models/               TTS ONNX models and tokenizer
+│   ├── voices/                jarvis.wav, guinan.wav, data.wav, picard.wav, enterprise.wav
+│   └── personas.json          Personality prompt paired with each voice
 │
 └── src/test/java/com/jarvistts/
     ├── VoicePipelineTest.kt
     ├── SessionStoreTest.kt
     ├── SessionCodecTest.kt
-    └── MiniJsonTest.kt
+    ├── MiniJsonTest.kt
+    ├── MarkdownTest.kt
+    └── ModelManagerTest.kt
 ```
 
-STT and LLM models are not included in `assets/`. They download the first time they are needed.
-
-The TTS model is currently bundled with the app.
+STT and LLM models are not included in `assets/` — they download the first time they're needed. The TTS model is currently bundled with the app.
 
 ## Native libraries
 
 The native build creates three shared libraries:
 
-```text
-jarvis_tts
-jarvis_stt
-jarvis_llm
-```
+| Library | Contains |
+|---|---|
+| `jarvis_tts` | omatts and ONNX Runtime |
+| `jarvis_stt` | whisper.cpp |
+| `jarvis_llm` | llama.cpp |
 
-They contain:
-
-- `jarvis_tts` — omatts and ONNX Runtime
-- `jarvis_stt` — whisper.cpp
-- `jarvis_llm` — llama.cpp
-
-The build intentionally forces Release mode:
-
-```cmake
-CMAKE_BUILD_TYPE=Release
-```
-
-This is important. Without it, an Android Gradle Plugin issue can silently produce builds that are **30–80× slower**.
-
-See `AGENTS.md` for the full explanation.
+The build intentionally forces Release mode (`CMAKE_BUILD_TYPE=Release`). This matters: without it, an Android Gradle Plugin issue can silently produce builds that are **30–80× slower**. See [`AGENTS.md`](AGENTS.md) for the full explanation.
 
 ## Exporting the TTS models
 
-The bundled ONNX models were generated using omatts’s `export_onnx.py`.
+The bundled ONNX models were generated using omatts's `export_onnx.py`.
 
-Use this specific Pocket-TTS commit:
+1. Check out this specific Pocket-TTS commit — later versions removed or renamed modules the export script needs:
 
-```text
-kyutai-labs/pocket-tts
-commit: 7db278e
-```
+   ```text
+   kyutai-labs/pocket-tts
+   commit: 7db278e
+   ```
 
-Later Pocket-TTS versions removed or renamed modules and symbols required by the export script.
+2. Install the pinned checkout without its dependencies:
 
-Install the pinned checkout without installing its dependencies:
+   ```bash
+   pip install --no-deps <path-to-pocket-tts-checkout>
+   ```
 
-```bash
-pip install --no-deps <path-to-pocket-tts-checkout>
-```
+3. Set up the export environment: `pocket-tts`, `torch`, `onnx`, `onnxruntime`.
 
-The export environment needs:
+4. Run the export:
 
-- `pocket-tts`
-- `torch`
-- `onnx`
-- `onnxruntime`
+   ```bash
+   python export_onnx.py
+   ```
 
-Then run:
+   This exports five models, quantizes three of them to INT8, stores large weights in `.onnx.data` sidecar files, and keeps one default variant per model.
 
-```bash
-python export_onnx.py
-```
+5. Copy the generated directory into `app/src/main/assets/models/`.
 
-The script:
+## Sharing the APK
 
-- Exports five models
-- Quantizes three models to INT8
-- Stores large weights in `.onnx.data` sidecar files
-- Keeps one default variant per model
+The debug APK can be sideloaded onto another device. The receiving device needs:
 
-Copy the generated directory into:
+- Android 8.0 or newer
+- An ARM64 processor
+- Permission to install unknown apps
 
-```text
-app/src/main/assets/models/
-```
+The APK is approximately **175 MB**. Good transfer options include a Drive link, USB, or local file transfer — avoid sending it as a chat attachment.
 
 ## Licenses
 
-- Project code and `omatts.cpp`: MIT
-- `whisper.cpp`: MIT
-- `llama.cpp`: MIT
-- TTS model weights: CC-BY-4.0
-- Full attribution: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
-- TTS weight license: [`app/src/main/assets/models/LICENSE-WEIGHTS.txt`](app/src/main/assets/models/LICENSE-WEIGHTS.txt)
+| | |
+|---|---|
+| Project code and `omatts.cpp` | MIT |
+| `whisper.cpp` | MIT |
+| `llama.cpp` | MIT |
+| TTS model weights | CC-BY-4.0 |
+
+Full attribution: [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)
+TTS weight license: [`app/src/main/assets/models/LICENSE-WEIGHTS.txt`](app/src/main/assets/models/LICENSE-WEIGHTS.txt)

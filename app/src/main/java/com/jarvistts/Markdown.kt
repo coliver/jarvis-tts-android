@@ -9,12 +9,15 @@ package com.jarvistts
  */
 sealed class MarkdownSpan {
     data class Plain(val text: String) : MarkdownSpan()
+
     data class Bold(val text: String) : MarkdownSpan()
+
     data class Code(val text: String) : MarkdownSpan()
 }
 
 sealed class MarkdownBlock {
     data class Paragraph(val spans: List<MarkdownSpan>) : MarkdownBlock()
+
     data class CodeBlock(val code: String) : MarkdownBlock()
 }
 

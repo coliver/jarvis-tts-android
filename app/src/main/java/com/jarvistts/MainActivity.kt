@@ -33,6 +33,12 @@ private const val AMPLITUDE_NORMALIZER = 3000.0f
 private const val LLM_N_CTX = 2048
 private const val LLM_MAX_TOKENS = 200
 
+// Rest of LLM_N_CTX after reserving room for the generated reply. Also has to
+// cover the persona system prompt and the current utterance, not just history,
+// since VoicePipeline.buildHistory's token count is an estimate rather than an
+// exact tokenization -- this is deliberately conservative, not tight.
+private const val LLM_HISTORY_TOKEN_BUDGET = LLM_N_CTX - LLM_MAX_TOKENS
+
 // The platform minimum buffer size leaves almost no slack: any brief stall in
 // the native TTS synthesis loop (thermal throttling, a GC pause, CPU
 // contention right after LLM generation) drains it before the next chunk
@@ -40,9 +46,6 @@ private const val LLM_MAX_TOKENS = 200
 // (confirmed via logcat: "BUFFER TIMEOUT ... due to underrun"). A few times
 // the minimum gives synthesis room to catch up without the listener noticing.
 private const val AUDIO_TRACK_BUFFER_MULTIPLIER = 4
-
-private const val REPLY_LENGTH_HINT =
-    " Keep replies short, spoken-aloud length, one or two sentences unless asked for more."
 
 class MainActivity : ComponentActivity() {
     private var sttHandle: Long = 0
@@ -56,10 +59,7 @@ class MainActivity : ComponentActivity() {
     // A voice with no entry falls back to the "jarvis" persona.
     private val personas: Map<String, String> by lazy { ModelManager.loadPersonas(this) }
 
-    private fun personaFor(voiceName: String): String {
-        val base = personas[voiceName] ?: personas.getValue(ModelManager.DEFAULT_VOICE)
-        return base + REPLY_LENGTH_HINT
-    }
+    private fun personaFor(voiceName: String): String = ModelManager.personaFor(personas, voiceName)
 
     private val uiState = JarvisUiState()
 
@@ -382,10 +382,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun refreshAvailableModels() {
-        uiState.availableModels = ModelManager.listAvailableModels(this).map { it.name }
-        uiState.selectedModelName =
-            ModelManager.selectedModelPath(this)?.let { File(it).name }
-                ?: ModelManager.DEFAULT_LLM_FILENAME
+        val names = ModelManager.listAvailableModels(this).map { it.name }
+        uiState.availableModels = names
+        uiState.selectedModelName = ModelManager.resolveSelectedModelName(ModelManager.selectedModelPath(this), names)
     }
 
     /** Swaps the running LLM for a different model file the user dropped into
@@ -427,10 +426,7 @@ class MainActivity : ComponentActivity() {
         val voicesDir = File(filesDir, "voices")
         val names = ModelManager.listAvailableVoices(voicesDir)
         uiState.availableVoices = names
-        uiState.selectedVoiceName =
-            ModelManager.selectedVoiceName(this).takeIf { it in names }
-                ?: names.firstOrNull()
-                ?: ModelManager.DEFAULT_VOICE
+        uiState.selectedVoiceName = ModelManager.resolveSelectedVoice(ModelManager.selectedVoiceName(this), names)
     }
 
     /** Switching voices never touches ttsHandle, the name is just passed to
@@ -477,7 +473,17 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) { beginStage("Thinking") }
             }
 
-            val prompt = NativeLLM.nativeFormatPrompt(llmHandle, personaFor(uiState.selectedVoiceName), userText)
+            // uiState.turns already ends with this same user utterance (added by the
+            // caller before askJarvis runs), so drop it here to avoid sending it twice.
+            val history = VoicePipeline.buildHistory(uiState.turns.dropLast(1), LLM_HISTORY_TOKEN_BUDGET)
+            val prompt =
+                NativeLLM.nativeFormatPrompt(
+                    llmHandle,
+                    personaFor(uiState.selectedVoiceName),
+                    history.map { it.first }.toTypedArray(),
+                    history.map { it.second }.toTypedArray(),
+                    userText,
+                )
 
             val genStart = System.currentTimeMillis()
             val reply = NativeLLM.nativeGenerate(llmHandle, prompt, LLM_MAX_TOKENS).trim()

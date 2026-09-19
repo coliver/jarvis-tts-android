@@ -64,10 +64,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
-import kotlinx.coroutines.launch
 
 private val BgColor = Color(0xFF0A0E13)
 private val SurfaceColor = Color(0xFF171D24)

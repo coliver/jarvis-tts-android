@@ -29,6 +29,9 @@ object ModelManager {
 
     const val DEFAULT_VOICE = "jarvis"
 
+    private const val REPLY_LENGTH_HINT =
+        " Keep replies short, spoken-aloud length, one or two sentences unless asked for more."
+
     fun externalModelsDir(context: Context): File =
         File(context.getExternalFilesDir(null) ?: context.filesDir, LLM_SUBDIR).apply { mkdirs() }
 
@@ -96,6 +99,52 @@ object ModelManager {
     fun parsePersonas(json: String): Map<String, String> {
         @Suppress("UNCHECKED_CAST")
         return MiniJson.parse(json) as Map<String, String>
+    }
+
+    /** Persona text (with the spoken-reply-length hint appended) for a given
+     *  voice. A voice with no entry in [personas] -- e.g. a voice clip added
+     *  without a matching personas.json entry -- falls back to [DEFAULT_VOICE]'s
+     *  persona. Split out from MainActivity so the fallback is testable
+     *  under plain JUnit.
+     */
+    fun personaFor(
+        personas: Map<String, String>,
+        voiceName: String,
+    ): String {
+        val base = personas[voiceName] ?: personas.getValue(DEFAULT_VOICE)
+        return base + REPLY_LENGTH_HINT
+    }
+
+    /** Which voice is actually selected on app load: the persisted choice if
+     *  its clip is still present, else the first available voice, else
+     *  [DEFAULT_VOICE] if no voice clips are bundled at all. Split out from
+     *  MainActivity.refreshAvailableVoices so this fallback chain -- and the
+     *  persona it ends up loading via [personaFor] -- is testable under
+     *  plain JUnit.
+     */
+    fun resolveSelectedVoice(
+        persistedVoice: String,
+        availableVoices: List<String>,
+    ): String = persistedVoice.takeIf { it in availableVoices } ?: availableVoices.firstOrNull() ?: DEFAULT_VOICE
+
+    /** Which model name is shown as selected on app load: the persisted
+     *  model's file name if it's still among [availableModelNames], else the
+     *  first available model, else [DEFAULT_LLM_FILENAME] if no models are
+     *  present at all. Mirrors [resolveSelectedVoice]'s fallback chain, so a
+     *  deleted/renamed model file doesn't leave the UI showing a selection
+     *  that isn't actually loadable. Split out from
+     *  MainActivity.refreshAvailableModels for the same reason. Actual
+     *  load-time recovery for a persisted path that no longer exists is
+     *  handled separately by MainActivity.ensureLlmLoaded.
+     */
+    fun resolveSelectedModelName(
+        persistedPath: String?,
+        availableModelNames: List<String>,
+    ): String {
+        val persistedName = persistedPath?.let { File(it).name }
+        return persistedName?.takeIf { it in availableModelNames }
+            ?: availableModelNames.firstOrNull()
+            ?: DEFAULT_LLM_FILENAME
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

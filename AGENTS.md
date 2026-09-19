@@ -146,10 +146,52 @@ Not done / open follow-ups:
 - No wake word, no persistent background service, one-shot tap-to-talk
   only.
 - No instrumented UI tests for `MainActivity`/`JarvisScreen`.
-- Repo has no git history yet. Only commit when the user explicitly asks,
-  per standing instruction, don't take that initiative unprompted.
 - LLM generation speed has shown thermal-throttling-driven variance (0.9 to
   4.6 tok/s on identical prompts) after long back-to-back native rebuild
   sessions, not reproduced as a cold-device baseline issue. If it recurs,
   check `adb shell dumpsys thermalservice` for sensor throttle status
   before assuming a code regression.
+
+Note: the repo now has git history (only commit when the user explicitly
+asks, per standing instruction, don't take that initiative unprompted) and
+59 passing JUnit tests as of 2026-09-19, both stale claims from the
+original version of this section corrected in place.
+
+## TODO (as of 2026-09-19)
+
+Roughly in priority order. Pick from the top unless told otherwise.
+
+1. **Downloaded models have no integrity check.** `ModelDownloader` renames
+   `.part` -> final on success, which guards a *killed* download but not a
+   *completed-but-corrupt* one (bit flip, a proxy that truncates but still
+   returns 200). Add a checksum (SHA-256) verification step against a known
+   hash for `STT_URL`/`DEFAULT_LLM_URL` before the rename.
+2. **No crash resilience around the native layer.** A malformed `.gguf` or
+   OOM on a low-RAM device can segfault `llama_init`/`whisper_init` and take
+   the whole process down -- no crash reporting, no safe-mode recovery. At
+   minimum, catch what's catchable around native init calls and consider a
+   RAM-tier check before offering the default (~770MB) model.
+3. **No CI.** `ktlintCheck` and `testDebugUnitTest` both run in seconds; add
+   a GitHub Actions workflow that runs them on push/PR so "you are the CI"
+   (see Build/test/lint above) stops being literally true.
+4. Session history has no pruning/size cap, and the History list/rename/
+   delete UI hasn't been visually verified on a device (carried over from
+   the previous backlog note).
+5. Session data (`SessionStore`) is unencrypted, unbounded JSON on disk --
+   worth a size cap and, if this is ever used for anything sensitive, an
+   at-rest encryption pass.
+6. No Wi-Fi-only guard/warning before the ~800MB combined STT+LLM
+   first-launch download over a metered connection.
+7. No wake word, no persistent background service, one-shot tap-to-talk
+   only (carried over).
+8. No instrumented UI tests for `MainActivity`/`JarvisScreen` (carried
+   over; deferred by design so far in favor of fast local-only JUnit).
+9. No release/signing config, only debug builds exist (carried over; fine
+    for sideloading to a friend, needed for anything wider).
+10. TTS models not downloadable, needs a hosting decision from the user
+    (carried over).
+
+Done since the previous version of this list: the LLM now gets recent
+conversation history (see `VoicePipeline.buildHistory()`,
+`NativeLLM.nativeFormatPrompt()`), not just the current utterance in
+isolation.

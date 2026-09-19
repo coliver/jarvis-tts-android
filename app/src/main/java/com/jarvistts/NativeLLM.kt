@@ -15,9 +15,14 @@ object NativeLLM {
         listener: ProgressListener?,
     ): Long
 
+    /** [historyRoles]/[historyTexts] are parallel arrays (role is "user" or
+     *  "assistant") of prior turns to include before [userText], oldest first.
+     */
     external fun nativeFormatPrompt(
         handle: Long,
         systemPrompt: String,
+        historyRoles: Array<String>,
+        historyTexts: Array<String>,
         userText: String,
     ): String
 

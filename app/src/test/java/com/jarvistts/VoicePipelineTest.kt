@@ -46,6 +46,47 @@ class VoicePipelineTest {
         val samples = shortArrayOf(1000, 1000, 0, 0)
         assertEquals(1000.0, VoicePipeline.rms(samples, 2), 0.0001)
     }
+
+    @Test
+    fun `buildHistory maps speakers to chat roles in chronological order`() {
+        val turns =
+            listOf(
+                Turn(Speaker.USER, "hello", 0),
+                Turn(Speaker.JARVIS, "hi there", 0),
+            )
+        assertEquals(
+            listOf("user" to "hello", "assistant" to "hi there"),
+            VoicePipeline.buildHistory(turns, tokenBudget = 1000),
+        )
+    }
+
+    @Test
+    fun `buildHistory returns nothing for an empty transcript`() {
+        assertTrue(VoicePipeline.buildHistory(emptyList(), tokenBudget = 1000).isEmpty())
+    }
+
+    @Test
+    fun `buildHistory drops oldest turns once the budget is exceeded`() {
+        // Each turn is 10 chars, ~2-3 tokens at the 4-chars-per-token estimate.
+        val turns = (1..20).map { Turn(Speaker.USER, "x".repeat(10), 0) }
+        val history = VoicePipeline.buildHistory(turns, tokenBudget = 10)
+        assertTrue(history.size < turns.size)
+        assertTrue(history.isNotEmpty())
+    }
+
+    @Test
+    fun `buildHistory always keeps the single most recent turn even over budget`() {
+        val turns = listOf(Turn(Speaker.USER, "x".repeat(1000), 0))
+        assertEquals(1, VoicePipeline.buildHistory(turns, tokenBudget = 1).size)
+    }
+
+    @Test
+    fun `buildHistory keeps only the most recent turns, not the oldest`() {
+        val turns = listOf(Turn(Speaker.USER, "first", 0), Turn(Speaker.JARVIS, "second", 0))
+        // Budget only large enough for one short turn.
+        val history = VoicePipeline.buildHistory(turns, tokenBudget = 2)
+        assertEquals(listOf("assistant" to "second"), history)
+    }
 }
 
 class SilenceDetectorTest {

@@ -79,7 +79,9 @@ Java_com_jarvistts_NativeLLM_nativeInit(JNIEnv *env, jobject, jstring modelPath,
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_jarvistts_NativeLLM_nativeFormatPrompt(JNIEnv *env, jobject, jlong handle, jstring systemPrompt, jstring userText) {
+Java_com_jarvistts_NativeLLM_nativeFormatPrompt(JNIEnv *env, jobject, jlong handle, jstring systemPrompt,
+                                                 jobjectArray historyRoles, jobjectArray historyTexts,
+                                                 jstring userText) {
     auto *session = reinterpret_cast<LlmSession *>(handle);
     if (session == nullptr) {
         return env->NewStringUTF("");
@@ -87,25 +89,48 @@ Java_com_jarvistts_NativeLLM_nativeFormatPrompt(JNIEnv *env, jobject, jlong hand
 
     const char *sys_chars = env->GetStringUTFChars(systemPrompt, nullptr);
     const char *user_chars = env->GetStringUTFChars(userText, nullptr);
-    llama_chat_message messages[2] = {
-        {"system", sys_chars},
-        {"user", user_chars},
-    };
+    jsize historyLen = env->GetArrayLength(historyRoles);
+
+    // Local refs + UTF chars for each history entry need to stay alive until
+    // after llama_chat_apply_template() runs, since messages[] just holds
+    // borrowed const char* pointers into them.
+    std::vector<jstring> roleRefs(historyLen);
+    std::vector<jstring> textRefs(historyLen);
+    std::vector<const char *> roleChars(historyLen);
+    std::vector<const char *> textChars(historyLen);
+    for (jsize i = 0; i < historyLen; i++) {
+        roleRefs[i] = (jstring) env->GetObjectArrayElement(historyRoles, i);
+        textRefs[i] = (jstring) env->GetObjectArrayElement(historyTexts, i);
+        roleChars[i] = env->GetStringUTFChars(roleRefs[i], nullptr);
+        textChars[i] = env->GetStringUTFChars(textRefs[i], nullptr);
+    }
+
+    std::vector<llama_chat_message> messages;
+    messages.reserve(historyLen + 2);
+    messages.push_back({"system", sys_chars});
+    for (jsize i = 0; i < historyLen; i++) {
+        messages.push_back({roleChars[i], textChars[i]});
+    }
+    messages.push_back({"user", user_chars});
 
     // nullptr tmpl: use whichever template is embedded in this model's GGUF
     // metadata (or llama.cpp's best-guess match for known families), so
     // swapping the .gguf asset doesn't require touching any formatting code.
     std::vector<char> buf(1024);
-    int32_t n = llama_chat_apply_template(session->model, nullptr, messages, 2, true,
+    int32_t n = llama_chat_apply_template(session->model, nullptr, messages.data(), messages.size(), true,
                                            buf.data(), (int32_t) buf.size());
     if (n > (int32_t) buf.size()) {
         buf.resize(n);
-        n = llama_chat_apply_template(session->model, nullptr, messages, 2, true,
+        n = llama_chat_apply_template(session->model, nullptr, messages.data(), messages.size(), true,
                                        buf.data(), (int32_t) buf.size());
     }
 
     env->ReleaseStringUTFChars(systemPrompt, sys_chars);
     env->ReleaseStringUTFChars(userText, user_chars);
+    for (jsize i = 0; i < historyLen; i++) {
+        env->ReleaseStringUTFChars(roleRefs[i], roleChars[i]);
+        env->ReleaseStringUTFChars(textRefs[i], textChars[i]);
+    }
 
     if (n < 0) {
         return env->NewStringUTF("");
