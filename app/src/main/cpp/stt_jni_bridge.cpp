@@ -2,6 +2,7 @@
 // thin-wrapper style: no logic here beyond JNI<->C++ marshalling.
 #include <algorithm>
 #include <android/log.h>
+#include <exception>
 #include <jni.h>
 #include <string>
 #include <thread>
@@ -22,16 +23,26 @@ static int nThreads() {
     return 4;
 }
 
+// Catches C++ exceptions (e.g. std::bad_alloc on a low-RAM device) so they can't
+// escape this extern "C" JNI function, which would abort the whole process; see the
+// matching note on NativeLLM's nativeInit in llm_jni_bridge.cpp.
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_jarvistts_NativeSTT_nativeInit(JNIEnv *env, jobject, jstring modelPath) {
     whisper_log_set(whisperLog, nullptr);
     const char *path = env->GetStringUTFChars(modelPath, nullptr);
-    struct whisper_context_params cparams = whisper_context_default_params();
-    // Default flash_attn=true hits a pathologically slow path on this CPU backend
-    // (encode time alone was 22s for a 4s clip -- confirmed via whisper_print_timings).
-    // The plain attention kernel is dramatically faster here.
-    cparams.flash_attn = false;
-    struct whisper_context *ctx = whisper_init_from_file_with_params(path, cparams);
+    struct whisper_context *ctx = nullptr;
+    try {
+        struct whisper_context_params cparams = whisper_context_default_params();
+        // Default flash_attn=true hits a pathologically slow path on this CPU backend
+        // (encode time alone was 22s for a 4s clip -- confirmed via whisper_print_timings).
+        // The plain attention kernel is dramatically faster here.
+        cparams.flash_attn = false;
+        ctx = whisper_init_from_file_with_params(path, cparams);
+    } catch (const std::exception &e) {
+        __android_log_print(ANDROID_LOG_ERROR, "JarvisSTT", "nativeInit failed: %s", e.what());
+    } catch (...) {
+        __android_log_print(ANDROID_LOG_ERROR, "JarvisSTT", "nativeInit failed: unknown exception");
+    }
     env->ReleaseStringUTFChars(modelPath, path);
     return reinterpret_cast<jlong>(ctx);
 }

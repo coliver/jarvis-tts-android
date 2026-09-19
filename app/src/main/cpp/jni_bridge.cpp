@@ -1,5 +1,7 @@
+#include <android/log.h>
 #include <jni.h>
 #include <cstring>
+#include <exception>
 #include <string>
 
 extern "C" {
@@ -34,8 +36,18 @@ Java_com_jarvistts_NativeBridge_create(JNIEnv* env, jobject, jstring modelsDir,
     const char* voicesC = dupCString(env, voicesDir, v);
     const char* tokenC = dupCString(env, tokenizerPath, t);
     const char* precC = dupCString(env, precision, p);
-    void* handle = ptt_create(modelsC, voicesC, tokenC, precC, temperature, lsdSteps, numThreads);
-    return reinterpret_cast<jlong>(handle);
+    // A C++ exception escaping an extern "C" JNI function aborts the process; return 0
+    // (the same "create failed" result Kotlin already handles) instead. See the
+    // matching note on NativeLLM's nativeInit in llm_jni_bridge.cpp.
+    try {
+        void* handle = ptt_create(modelsC, voicesC, tokenC, precC, temperature, lsdSteps, numThreads);
+        return reinterpret_cast<jlong>(handle);
+    } catch (const std::exception& e) {
+        __android_log_print(ANDROID_LOG_ERROR, "JarvisTTS", "create failed: %s", e.what());
+    } catch (...) {
+        __android_log_print(ANDROID_LOG_ERROR, "JarvisTTS", "create failed: unknown exception");
+    }
+    return 0;
 }
 
 extern "C" JNIEXPORT jdouble JNICALL

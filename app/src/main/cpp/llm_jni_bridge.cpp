@@ -4,6 +4,7 @@
 #include <android/log.h>
 #include <atomic>
 #include <chrono>
+#include <exception>
 #include <jni.h>
 #include <string>
 #include <vector>
@@ -43,39 +44,63 @@ static bool onLoadProgress(float progress, void *user_data) {
     return true; // returning false would abort loading
 }
 
+// A C++ exception escaping an extern "C" JNI function is undefined behavior and in
+// practice aborts the whole process. llama.cpp signals most bad-file cases by
+// returning nullptr, but allocation failures (std::bad_alloc on a low-RAM device) and
+// gguf parse errors are thrown, so nativeInit catches them and returns 0 -- the same
+// "load failed" result Kotlin already handles -- instead of taking the app down.
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_jarvistts_NativeLLM_nativeInit(JNIEnv *env, jobject, jstring modelPath, jint nCtx, jobject listener) {
     const char *path = env->GetStringUTFChars(modelPath, nullptr);
+    llama_model *model = nullptr;
+    llama_context *ctx = nullptr;
 
-    ProgressCtx pctx{env, nullptr, nullptr};
-    llama_model_params model_params = llama_model_default_params();
-    model_params.n_gpu_layers = 0;
-    if (listener != nullptr) {
-        jclass listenerClass = env->GetObjectClass(listener);
-        pctx.listener = listener;
-        pctx.method = env->GetMethodID(listenerClass, "onProgress", "(F)V");
-        model_params.progress_callback = onLoadProgress;
-        model_params.progress_callback_user_data = &pctx;
-    }
-    llama_model *model = llama_load_model_from_file(path, model_params);
-    env->ReleaseStringUTFChars(modelPath, path);
-    if (model == nullptr) {
-        return 0;
-    }
+    try {
+        ProgressCtx pctx{env, nullptr, nullptr};
+        llama_model_params model_params = llama_model_default_params();
+        model_params.n_gpu_layers = 0;
+        if (listener != nullptr) {
+            jclass listenerClass = env->GetObjectClass(listener);
+            pctx.listener = listener;
+            pctx.method = env->GetMethodID(listenerClass, "onProgress", "(F)V");
+            model_params.progress_callback = onLoadProgress;
+            model_params.progress_callback_user_data = &pctx;
+        }
+        model = llama_load_model_from_file(path, model_params);
+        env->ReleaseStringUTFChars(modelPath, path);
+        path = nullptr;
+        if (model == nullptr) {
+            return 0;
+        }
 
-    llama_context_params ctx_params = llama_context_default_params();
-    ctx_params.n_ctx = nCtx;
-    ctx_params.n_batch = nCtx;
-    ctx_params.n_threads = nThreads();
-    ctx_params.n_threads_batch = nThreads();
-    llama_context *ctx = llama_new_context_with_model(model, ctx_params);
-    if (ctx == nullptr) {
+        llama_context_params ctx_params = llama_context_default_params();
+        ctx_params.n_ctx = nCtx;
+        ctx_params.n_batch = nCtx;
+        ctx_params.n_threads = nThreads();
+        ctx_params.n_threads_batch = nThreads();
+        ctx = llama_new_context_with_model(model, ctx_params);
+        if (ctx == nullptr) {
+            llama_free_model(model);
+            return 0;
+        }
+
+        auto *session = new LlmSession{model, ctx};
+        return reinterpret_cast<jlong>(session);
+    } catch (const std::exception &e) {
+        __android_log_print(ANDROID_LOG_ERROR, "JarvisLLM", "nativeInit failed: %s", e.what());
+    } catch (...) {
+        __android_log_print(ANDROID_LOG_ERROR, "JarvisLLM", "nativeInit failed: unknown exception");
+    }
+    if (path != nullptr) {
+        env->ReleaseStringUTFChars(modelPath, path);
+    }
+    if (ctx != nullptr) {
+        llama_free(ctx);
+    }
+    if (model != nullptr) {
         llama_free_model(model);
-        return 0;
     }
-
-    auto *session = new LlmSession{model, ctx};
-    return reinterpret_cast<jlong>(session);
+    return 0;
 }
 
 extern "C" JNIEXPORT jstring JNICALL
