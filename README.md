@@ -46,6 +46,7 @@ AudioTrack — streams the audio
 - Recording stops automatically when you stop speaking; there's no button to hold down.
 - All three engines warm up in parallel when the app starts, each with its own loading/download progress.
 - Tap **Stop** at any point — listening, thinking, or speaking — to cancel that turn immediately.
+- Recent turns from the current conversation are included in each prompt, so follow-up questions work without repeating context, bounded by the loaded model's context window.
 
 ## Setup
 

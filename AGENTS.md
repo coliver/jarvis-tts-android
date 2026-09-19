@@ -16,11 +16,11 @@ Pipeline: mic -> VAD auto-stop recording -> whisper.cpp (STT) -> llama.cpp
 
 Proven working end-to-end on a Pixel 8 Pro as of 2026-09-17.
 
-There is currently no git repository in this working directory (verify
-with `git status` before assuming otherwise; it may have changed since this
-was written). That means there is no merge/diff safety net for concurrent
-edits. Read a file immediately before editing it, don't assume your
-in-context copy is current.
+The repo has git history and a GitHub remote (`origin`) as of 2026-09-19.
+Only commit or push when the user explicitly asks, don't take that
+initiative unprompted. Read a file immediately before editing it, don't
+assume your in-context copy is current -- other sessions may be working in
+this same tree (see `ListAgents`).
 
 ## Build, test, lint
 
@@ -115,22 +115,29 @@ needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
   `llama_chat_apply_template()`, which reads the template embedded in
   whatever `.gguf` is loaded. Don't reintroduce a hardcoded template string,
   that was deliberately removed.
+- As of 2026-09-19, `nativeFormatPrompt()` also takes the recent conversation
+  turns (`VoicePipeline.buildHistory()` picks which ones fit the remaining
+  context budget), not just the current utterance, so follow-ups within a
+  session have context. The budget is an estimate (~4 chars/token), not an
+  exact tokenization -- see the comment on `LLM_HISTORY_TOKEN_BUDGET` in
+  `MainActivity.kt` before changing it.
 - A picked model only gets persisted to `SharedPreferences` **after** it
   loads successfully (see `onModelSelected` in `MainActivity.kt`). Don't
   move the persist call earlier, a bad file would get stuck as the
   permanent selection across restarts (this exact bug was hit and fixed
   once already).
 
-## Known state / backlog (as of 2026-09-18)
+## Known state / backlog (as of 2026-09-19)
 
-Working: STT, LLM, TTS, VAD auto-stop recording, parallel engine warm-up
-with real/approximate load-progress UI, LLM model switching, pause/resume
-for TTS playback, model download-on-first-launch for STT+LLM, a "Stop"
-control that aborts an in-flight listen/think/speak turn, session
-history (auto-save to local JSON, "New"/"History" in the top bar to start
-fresh or resume/delete a past conversation, see README's "Session history"),
-ktlint + JaCoCo wired up, 31 passing JUnit tests (`VoicePipeline`,
-`SilenceDetector`, `MiniJson`, `SessionCodec`, `SessionStore` logic only,
+Working: STT, LLM (now with recent-conversation-history context, see above),
+TTS, VAD auto-stop recording, parallel engine warm-up with real/approximate
+load-progress UI, LLM model switching, pause/resume for TTS playback, model
+download-on-first-launch for STT+LLM, a "Stop" control that aborts an
+in-flight listen/think/speak turn, session history (auto-save to local JSON,
+"New"/"History" in the top bar to start fresh or resume/delete a past
+conversation, see README's "Session history"), ktlint + JaCoCo wired up, 64
+passing JUnit tests (`VoicePipeline`, `SilenceDetector`, `MiniJson`,
+`SessionCodec`, `SessionStore`, `Markdown`, `ModelManager` logic only,
 anything Android-framework- or Compose-coupled has 0% coverage by design,
 since instrumented/Robolectric tests were explicitly deferred in favor of
 fast local-only JUnit).
@@ -151,11 +158,6 @@ Not done / open follow-ups:
   sessions, not reproduced as a cold-device baseline issue. If it recurs,
   check `adb shell dumpsys thermalservice` for sensor throttle status
   before assuming a code regression.
-
-Note: the repo now has git history (only commit when the user explicitly
-asks, per standing instruction, don't take that initiative unprompted) and
-59 passing JUnit tests as of 2026-09-19, both stale claims from the
-original version of this section corrected in place.
 
 ## TODO (as of 2026-09-19)
 
@@ -190,8 +192,3 @@ Roughly in priority order. Pick from the top unless told otherwise.
     for sideloading to a friend, needed for anything wider).
 10. TTS models not downloadable, needs a hosting decision from the user
     (carried over).
-
-Done since the previous version of this list: the LLM now gets recent
-conversation history (see `VoicePipeline.buildHistory()`,
-`NativeLLM.nativeFormatPrompt()`), not just the current utterance in
-isolation.
