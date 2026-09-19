@@ -307,6 +307,18 @@ The debug APK can be sideloaded onto another device. The receiving device needs:
 
 The APK is approximately **175 MB**. Good transfer options include a Drive link, USB, or local file transfer — avoid sending it as a chat attachment.
 
+### Publishing a GitHub Release
+
+The voice samples in `app/src/main/assets/voices/` are gitignored, so the APK built by CI (the `debug-apk-no-voices` artifact) has no voices and is not meant for sharing. Build locally, then attach that APK to a Release to get a stable link:
+
+```bash
+./gradlew assembleDebug
+gh release create v0.1 app/build/outputs/apk/debug/app-debug.apk \
+  --title "v0.1" --notes "Debug build, arm64 only."
+```
+
+The link is `https://github.com/<user>/jarvis-tts-android/releases/latest`. The repo must be public for it to work without a GitHub login.
+
 ## Licenses
 
 | | |
