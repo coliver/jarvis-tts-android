@@ -133,6 +133,17 @@ needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
   permanent selection across restarts (this exact bug was hit and fixed
   once already).
 
+## Tool calling
+
+`Tools.kt` (pure: prompt text, lenient JSON parse, spoken-email cleanup) and
+`ToolRunner.kt` (Android side: time, battery, timer via `AlarmClock`, email via a
+`mailto:` compose intent the user must send). `askJarvis` in `MainActivity.kt`
+routes the utterance through `Tools.route` (keyword/regex; also web search via Wikipedia, `WebSearch.kt`) BEFORE the LLM; a match runs the tool and speaks its result, no LLM call. Earlier LLM-emitted JSON calling was tried and dropped: the 1B model ignored the format and invented answers.
+second, spoken reply from the result. No llama.cpp grammar is used: a 1B model may
+emit malformed calls, so anything unparseable is spoken as ordinary text. Add a tool
+by extending `Tools.KNOWN`/`Tools.PROMPT` and `ToolRunner.run`. Not yet exercised
+on-device.
+
 ## Known state / backlog (as of 2026-09-19)
 
 Working: STT, LLM (now with recent-conversation-history context, see above),

@@ -569,8 +569,21 @@ class MainActivity : ComponentActivity() {
 
     private data class TimedResult(val text: String, val durationMs: Long)
 
+    private val toolRunner by lazy { ToolRunner(this) }
+
     private suspend fun askJarvis(userText: String): TimedResult =
         withContext(Dispatchers.Default) {
+            Tools.route(userText)?.let { call ->
+                val result =
+                    if (call.name == "web_search") {
+                        withContext(Dispatchers.Main) { beginStage("Searching") }
+                        WebSearch.search(call.args["query"].orEmpty())
+                    } else {
+                        withContext(Dispatchers.Main) { toolRunner.run(call) }
+                    }
+                android.util.Log.d("JarvisTools", "${call.name}${call.args} -> $result")
+                return@withContext TimedResult(result, 0)
+            }
             if (llmHandle == 0L) {
                 withContext(Dispatchers.Main) { beginStage("Loading language model") }
                 ensureLlmLoaded()
@@ -580,15 +593,15 @@ class MainActivity : ComponentActivity() {
             // uiState.turns already ends with this same user utterance (added by the
             // caller before askJarvis runs), so drop it here to avoid sending it twice.
             val history = VoicePipeline.buildHistory(uiState.turns.dropLast(1), LLM_HISTORY_TOKEN_BUDGET)
+            val persona = personaFor(uiState.selectedVoiceName)
             val prompt =
                 NativeLLM.nativeFormatPrompt(
                     llmHandle,
-                    personaFor(uiState.selectedVoiceName),
+                    persona,
                     history.map { it.first }.toTypedArray(),
                     history.map { it.second }.toTypedArray(),
                     userText,
                 )
-
             val genStart = System.currentTimeMillis()
             val reply = NativeLLM.nativeGenerate(llmHandle, prompt, LLM_MAX_TOKENS).trim()
             val genMs = System.currentTimeMillis() - genStart
