@@ -12,6 +12,8 @@ All notable changes to this project, newest first. Dates are commit dates.
 - CI workflow, and documentation for sharing builds via GitHub Releases.
 
 ### Changed
+- Layout rethought after modern AI chat apps: conversation history moved into a side drawer, model and voice pickers merged into a bottom sheet, Jarvis replies now read as plain text with an accent line while your words sit in a bubble, and the voice ring is large on an empty conversation then shrinks to a bottom dock so the transcript gets more room.
+- Default language model upgraded from Llama 3.2 1B to Llama 3.2 3B (~2 GB download) for noticeably better answers; replies are slower. Existing installs keep the 1B file and can switch via the model picker; new downloads fetch the 3B.
 - README now shows a demo GIF of a full listen, think and speak cycle.
 - README corrected against the code, badges added; third-party notices now cover all dependencies and models.
 - Speech model switched from tiny.en to base.en for better accuracy in noise.

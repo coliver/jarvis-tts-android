@@ -9,7 +9,7 @@ A fully on-device voice assistant for Android.
 
 <img src="docs/screenshots/demo.gif" alt="Asking Jarvis a question on a Pixel 8 Pro" width="280" align="right">
 
-Tap the mic, speak, and get a spoken response:
+Tap the voice ring, speak, and get a spoken response:
 
 1. 🎙️ Records your voice
 2. ✍️ Converts speech to text
@@ -37,7 +37,7 @@ For architecture notes and the current backlog, see [`AGENTS.md`](AGENTS.md).
 ## How it works
 
 ```text
-Tap the mic
+Tap the voice ring
       ↓
 Voice activity detection
       ↓
@@ -54,7 +54,7 @@ AudioTrack — streams the audio
 
 - Recording stops automatically when you stop speaking; there's no button to hold down.
 - All three engines warm up in parallel when the app starts, each with its own loading/download progress.
-- Hold the mic at any point — listening, thinking, or speaking — to cancel that turn immediately. While speaking, a tap pauses or resumes playback.
+- Hold the voice ring at any point — listening, thinking, or speaking — to cancel that turn immediately. While speaking, a tap pauses or resumes playback.
 - Simple requests (time, battery, timers, drafting an email, Wikipedia lookups) are matched by keyword before the LLM and answered directly by the app.
 - Recent turns from the current conversation are included in each prompt, so follow-up questions work without repeating context, bounded by the loaded model's context window.
 
@@ -188,10 +188,10 @@ Note: `adb install` does not work directly with UNC paths such as `\\wsl.localho
 | | |
 |---|---|
 | Engine | `llama.cpp` |
-| Default model | `Llama-3.2-1B-Instruct-Q4_K_M.gguf` (~770 MB) |
+| Default model | `Llama-3.2-3B-Instruct-Q4_K_M.gguf` (~2 GB) |
 | Download | Hugging Face, on first use (SHA-256 verified) |
 
-To use a different llama.cpp-compatible model, push it to the device and select it from the model picker in the top bar while the app is idle:
+To use a different llama.cpp-compatible model, push it to the device and select it from the model list (the sliders button in the top bar) while the app is idle:
 
 ```bash
 adb push model.gguf \
@@ -208,7 +208,7 @@ Chat formatting is detected automatically from the loaded model — no code chan
 | Models | Bundled in `app/src/main/assets/` |
 | Download | Not currently available for the custom-exported models |
 
-Five voice samples ship in `app/src/main/assets/voices/`, each paired with a personality prompt in `app/src/main/assets/personas.json`: `jarvis`, `guinan`, `data`, `picard`, and `enterprise`. Pick one from the voice picker in the top bar while the app is idle.
+Five voice samples ship in `app/src/main/assets/voices/`, each paired with a personality prompt in `app/src/main/assets/personas.json`: `jarvis`, `guinan`, `data`, `picard`, and `enterprise`. Pick one from the voice list (the sliders button in the top bar) while the app is idle.
 
 STT and LLM models are downloaded instead of bundled so the APK stays around **175 MB**, rather than approaching 1 GB.
 
@@ -216,8 +216,12 @@ STT and LLM models are downloaded instead of bundled so the APK stays around **1
 
 Every conversation is saved automatically as it happens — there's no manual save step.
 
-- **New** starts a fresh conversation. The current one is saved first if it has any turns.
-- **History** lists saved conversations. Tap one to resume it, tap **x** to delete it, or choose **Delete all** (with a confirmation) to clear everything.
+Open the side drawer with the menu button at the top left.
+
+- **New conversation** starts a fresh one. The current one is saved first if it has any turns.
+- The list below it shows saved conversations. Tap one to resume it, tap **x** to delete it, or choose **Delete all history** (with a confirmation) to clear everything.
+
+Starting or resuming a conversation is only available while the app is idle.
 - Titles are generated automatically from the first thing you said.
 
 Sessions are stored as JSON files under the app's internal `files/sessions/` directory. A session is written after every completed, stopped, or errored turn, so a killed or backgrounded app loses at most the single in-flight turn.
@@ -230,7 +234,7 @@ There is currently no size cap or automatic pruning — sessions accumulate inde
 app/src/main/
 ├── java/com/jarvistts/
 │   ├── MainActivity.kt      Activity lifecycle, coroutines, AudioRecord, and AudioTrack
-│   ├── JarvisScreen.kt      Jetpack Compose UI
+│   ├── JarvisScreen.kt      Jetpack Compose UI (top bar, history drawer, settings sheet, transcript, voice ring)
 │   ├── NativeSTT.kt         JNI declarations for whisper.cpp
 │   ├── NativeLLM.kt         JNI declarations for llama.cpp
 │   ├── NativeBridge.kt      JNI declarations for the TTS engine

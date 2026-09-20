@@ -10,35 +10,46 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -57,13 +69,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -77,7 +94,7 @@ private val DividerColor = Color(0xFF232B33)
 private val TextPrimary = Color(0xFFE7ECEF)
 private val TextDim = Color(0xFF6E7A87)
 private val Accent = Color(0xFF4FD6C4)
-private val AccentDim = Color(0xFF2B4A47)
+private val BubbleColor = Color(0xFF1A232C)
 private val Warn = Color(0xFFE2725B)
 
 // Subtle cockpit-glow vignette instead of a flat fill: a faint lift near the
@@ -161,6 +178,10 @@ fun JarvisTheme(content: @Composable () -> Unit) {
     )
 }
 
+private const val HERO_RING_DP = 232
+private const val DOCK_RING_DP = 112
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun JarvisScreen(
     state: JarvisUiState,
@@ -175,290 +196,378 @@ fun JarvisScreen(
     onSessionDelete: (String) -> Unit = {},
     onSessionDeleteAll: () -> Unit = {},
 ) {
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(BgGradient)
-                .windowInsetsPadding(WindowInsets.systemBars)
-                .padding(horizontal = 20.dp),
+    val scope = rememberCoroutineScope()
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    var showSettings by remember { mutableStateOf(false) }
+    var confirmDeleteAll by remember { mutableStateOf(false) }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            HistoryDrawer(
+                state = state,
+                onNewSession = {
+                    scope.launch { drawerState.close() }
+                    onNewSession()
+                },
+                onSessionSelect = {
+                    scope.launch { drawerState.close() }
+                    onSessionSelect(it)
+                },
+                onSessionDelete = onSessionDelete,
+                onDeleteAll = { confirmDeleteAll = true },
+            )
+        },
     ) {
-        Spacer(Modifier.height(20.dp))
-        TopBar(state, onModelSelect, onVoiceSelect, onNewSession, onSessionSelect, onSessionDelete, onSessionDeleteAll)
-        Spacer(Modifier.height(14.dp))
-        Box(Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
-        Spacer(Modifier.height(18.dp))
-
-        if (state.phase == Phase.WARMING_UP) {
-            TelemetryRow(state)
-            Spacer(Modifier.height(18.dp))
-            Text(
-                text = "Something to do while the engines spin up",
-                color = TextDim,
-                fontFamily = MonoFamily,
-                fontSize = 12.sp,
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(BgGradient)
+                    .windowInsetsPadding(WindowInsets.systemBars),
+        ) {
+            TopBar(
+                state = state,
+                onMenu = { scope.launch { drawerState.open() } },
+                onSettings = { showSettings = true },
             )
-            Spacer(Modifier.height(8.dp))
-            BreakoutGame(modifier = Modifier.weight(1f))
-        } else {
-            TranscriptLog(state, modifier = Modifier.weight(1f))
-        }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
 
-        state.lowMemoryWarning?.let { warning ->
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = warning,
-                color = Warn,
-                fontFamily = MonoFamily,
-                fontSize = 11.sp,
-                modifier = Modifier.clickable { state.lowMemoryWarning = null },
+            val isEmptyConversation = state.turns.isEmpty() && state.phase != Phase.WARMING_UP
+            Column(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 20.dp)) {
+                when {
+                    state.phase == Phase.WARMING_UP -> {
+                        Spacer(Modifier.height(18.dp))
+                        TelemetryRow(state)
+                        Spacer(Modifier.height(18.dp))
+                        Text(
+                            text = "Something to do while the engines spin up",
+                            color = TextDim,
+                            fontFamily = MonoFamily,
+                            fontSize = 12.sp,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        BreakoutGame(modifier = Modifier.weight(1f))
+                    }
+                    isEmptyConversation ->
+                        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                            MicControl(state, micEnabled, onMicTap, onPauseToggle, onStopTap, HERO_RING_DP.dp)
+                        }
+                    else -> TranscriptLog(state, modifier = Modifier.weight(1f))
+                }
+
+                state.lowMemoryWarning?.let { warning ->
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = warning,
+                        color = Warn,
+                        fontFamily = MonoFamily,
+                        fontSize = 11.sp,
+                        modifier = Modifier.clickable { state.lowMemoryWarning = null },
+                    )
+                }
+            }
+            if (!isEmptyConversation) {
+                Box(Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
+                Spacer(Modifier.height(10.dp))
+                MicControl(state, micEnabled, onMicTap, onPauseToggle, onStopTap, DOCK_RING_DP.dp)
+                Spacer(Modifier.height(16.dp))
+            } else {
+                Spacer(Modifier.height(16.dp))
+            }
+        }
+    }
+
+    if (showSettings) {
+        ModalBottomSheet(
+            onDismissRequest = { showSettings = false },
+            sheetState = rememberModalBottomSheetState(),
+            containerColor = SurfaceColor,
+            contentColor = TextPrimary,
+        ) {
+            SettingsSheet(
+                state = state,
+                onModelSelect = {
+                    showSettings = false
+                    onModelSelect(it)
+                },
+                onVoiceSelect = {
+                    showSettings = false
+                    onVoiceSelect(it)
+                },
             )
         }
-        Spacer(Modifier.height(12.dp))
-        MicControl(state, micEnabled, onMicTap, onPauseToggle, onStopTap)
-        Spacer(Modifier.height(28.dp))
+    }
+
+    if (confirmDeleteAll) {
+        AlertDialog(
+            onDismissRequest = { confirmDeleteAll = false },
+            title = { Text("Delete all history?") },
+            text = { Text("This permanently deletes all ${state.sessions.size} saved conversations.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDeleteAll = false
+                        scope.launch { drawerState.close() }
+                        onSessionDeleteAll()
+                    },
+                ) { Text("Delete all", color = Warn) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel") } },
+        )
     }
 
     state.meteredDownloadPrompt?.let { prompt ->
         AlertDialog(
             onDismissRequest = prompt.onCancel,
-            title = { Text("Not on Wi-Fi", fontFamily = MonoFamily) },
+            title = { Text("Not on Wi-Fi") },
             text = {
                 Text(
                     "Downloading the ${prompt.label} (~${prompt.sizeMb}MB) over this connection " +
                         "may use mobile data. Continue?",
-                    fontFamily = MonoFamily,
                 )
             },
-            confirmButton = {
-                TextButton(onClick = prompt.onProceed) { Text("Download anyway", fontFamily = MonoFamily) }
-            },
-            dismissButton = {
-                TextButton(onClick = prompt.onCancel) { Text("Wait for Wi-Fi", fontFamily = MonoFamily) }
-            },
+            confirmButton = { TextButton(onClick = prompt.onProceed) { Text("Download anyway") } },
+            dismissButton = { TextButton(onClick = prompt.onCancel) { Text("Wait for Wi-Fi") } },
         )
+    }
+}
+
+private enum class GlyphKind { MENU, TUNE, CLOSE, PLUS }
+
+/** 48dp touch target drawing its own glyph, so the app needs no icon library. */
+@Composable
+private fun GlyphButton(
+    kind: GlyphKind,
+    description: String,
+    enabled: Boolean = true,
+    tint: Color = TextPrimary,
+    onClick: () -> Unit,
+) {
+    val color = if (enabled) tint else tint.copy(alpha = 0.35f)
+    Box(
+        modifier =
+            Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(24.dp))
+                .clickable(enabled = enabled, onClick = onClick)
+                .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(22.dp)) {
+            val w = 1.8.dp.toPx()
+            val cap = StrokeCap.Round
+            val s = size.width
+            when (kind) {
+                GlyphKind.MENU -> {
+                    drawLine(color, Offset(2f, s * 0.25f), Offset(s - 2f, s * 0.25f), w, cap)
+                    drawLine(color, Offset(2f, s * 0.5f), Offset(s * 0.65f, s * 0.5f), w, cap)
+                    drawLine(color, Offset(2f, s * 0.75f), Offset(s - 2f, s * 0.75f), w, cap)
+                }
+                GlyphKind.TUNE -> {
+                    drawLine(color, Offset(2f, s * 0.32f), Offset(s - 2f, s * 0.32f), w, cap)
+                    drawLine(color, Offset(2f, s * 0.68f), Offset(s - 2f, s * 0.68f), w, cap)
+                    drawCircle(BgColor, radius = 3.5.dp.toPx(), center = Offset(s * 0.68f, s * 0.32f))
+                    drawCircle(color, radius = 3.5.dp.toPx(), center = Offset(s * 0.68f, s * 0.32f), style = Stroke(w))
+                    drawCircle(BgColor, radius = 3.5.dp.toPx(), center = Offset(s * 0.32f, s * 0.68f))
+                    drawCircle(color, radius = 3.5.dp.toPx(), center = Offset(s * 0.32f, s * 0.68f), style = Stroke(w))
+                }
+                GlyphKind.CLOSE -> {
+                    drawLine(color, Offset(s * 0.2f, s * 0.2f), Offset(s * 0.8f, s * 0.8f), w, cap)
+                    drawLine(color, Offset(s * 0.8f, s * 0.2f), Offset(s * 0.2f, s * 0.8f), w, cap)
+                }
+                GlyphKind.PLUS -> {
+                    drawLine(color, Offset(s * 0.5f, s * 0.15f), Offset(s * 0.5f, s * 0.85f), w, cap)
+                    drawLine(color, Offset(s * 0.15f, s * 0.5f), Offset(s * 0.85f, s * 0.5f), w, cap)
+                }
+            }
+        }
     }
 }
 
 @Composable
 private fun TopBar(
     state: JarvisUiState,
-    onModelSelect: (String) -> Unit,
-    onVoiceSelect: (String) -> Unit,
+    onMenu: () -> Unit,
+    onSettings: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GlyphButton(GlyphKind.MENU, "Conversation history", onClick = onMenu)
+        Text(
+            text = "JARVIS",
+            color = TextPrimary,
+            fontFamily = CondensedFamily,
+            fontWeight = FontWeight.Medium,
+            fontSize = 17.sp,
+            letterSpacing = 3.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.weight(1f),
+        )
+        if (state.phase == Phase.WARMING_UP) {
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Text("${state.elapsedSeconds}s", color = TextDim, fontFamily = MonoFamily, fontSize = 13.sp)
+            }
+        } else {
+            GlyphButton(GlyphKind.TUNE, "Model and voice", onClick = onSettings)
+        }
+    }
+}
+
+/** Conversation list in a side drawer, the way ChatGPT and Claude do it.
+ *  Starting or resuming a conversation is only enabled while idle: swapping
+ *  the transcript mid-turn would yank it out from under an in-flight
+ *  listen/think/speak cycle. Deleting is always allowed.
+ */
+@Composable
+private fun HistoryDrawer(
+    state: JarvisUiState,
     onNewSession: () -> Unit,
     onSessionSelect: (String) -> Unit,
     onSessionDelete: (String) -> Unit,
-    onSessionDeleteAll: () -> Unit,
+    onDeleteAll: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "JARVIS",
-                color = TextPrimary,
-                fontFamily = CondensedFamily,
-                fontWeight = FontWeight.Medium,
-                fontSize = 17.sp,
-                letterSpacing = 3.sp,
-            )
-            if (state.phase == Phase.WARMING_UP) {
-                Text(
-                    text = "${state.elapsedSeconds}s",
-                    color = TextDim,
-                    fontFamily = MonoFamily,
-                    fontSize = 13.sp,
-                )
-            }
-        }
-        if (state.phase != Phase.WARMING_UP) {
-            // A full-width row of its own, not squeezed next to the title: on a
-            // portrait phone, History + New + the model filename + the voice
-            // name don't fit in the half-row this used to share with "JARVIS",
-            // which pushed VoicePicker (and its dropdown) off-screen entirely.
-            // horizontalScroll is a safety net for a long model filename.
-            Spacer(Modifier.height(10.dp))
+    val idle = state.phase == Phase.IDLE
+    ModalDrawerSheet(drawerContainerColor = SurfaceColor, drawerContentColor = TextPrimary) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars)) {
             Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = idle, onClick = onNewSession)
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                HistoryPicker(state, onNewSession, onSessionSelect, onSessionDelete, onSessionDeleteAll)
-                Spacer(Modifier.width(14.dp))
-                ModelPicker(state, onModelSelect)
-                Spacer(Modifier.width(14.dp))
-                VoicePicker(state, onVoiceSelect)
-            }
-        }
-    }
-}
-
-/** Session history: "New" starts a fresh conversation, "History" lists
- *  saved ones (tap a row to resume it, tap its "x" to delete it). Both are
- *  only enabled while idle, same reasoning as ModelPicker: switching
- *  conversations mid-turn would yank the transcript out from under an
- *  in-flight listen/think/speak cycle.
- */
-@Composable
-private fun HistoryPicker(
-    state: JarvisUiState,
-    onNewSession: () -> Unit,
-    onSessionSelect: (String) -> Unit,
-    onSessionDelete: (String) -> Unit,
-    onSessionDeleteAll: () -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    var confirmDeleteAll by remember { mutableStateOf(false) }
-    if (confirmDeleteAll) {
-        AlertDialog(
-            onDismissRequest = { confirmDeleteAll = false },
-            title = { Text("Delete all history?", fontFamily = MonoFamily) },
-            text = {
-                Text(
-                    "This permanently deletes all ${state.sessions.size} saved conversations.",
-                    fontFamily = MonoFamily,
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmDeleteAll = false
-                        onSessionDeleteAll()
-                    },
-                ) { Text("Delete all", color = Warn, fontFamily = MonoFamily) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDeleteAll = false }) { Text("Cancel", fontFamily = MonoFamily) }
-            },
-        )
-    }
-    val enabled = state.phase == Phase.IDLE
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            text = "New",
-            color = if (enabled) TextDim else TextDim.copy(alpha = 0.5f),
-            fontFamily = MonoFamily,
-            fontSize = 11.sp,
-            modifier = Modifier.clickable(enabled = enabled) { onNewSession() },
-        )
-        Spacer(Modifier.width(10.dp))
-        Box {
-            val historyEnabled = enabled && state.sessions.isNotEmpty()
-            Text(
-                text = "History",
-                color = if (historyEnabled) TextDim else TextDim.copy(alpha = 0.5f),
-                fontFamily = MonoFamily,
-                fontSize = 11.sp,
-                modifier = Modifier.clickable(enabled = historyEnabled) { expanded = true },
-            )
-            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                for (session in state.sessions) {
-                    DropdownMenuItem(
-                        text = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = session.title,
-                                    fontFamily = MonoFamily,
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.weight(1f),
-                                )
-                                Spacer(Modifier.width(12.dp))
-                                Text(
-                                    text = "x",
-                                    color = Warn,
-                                    fontFamily = MonoFamily,
-                                    fontSize = 13.sp,
-                                    modifier =
-                                        Modifier.clickable {
-                                            expanded = false
-                                            onSessionDelete(session.id)
-                                        },
-                                )
-                            }
-                        },
-                        onClick = {
-                            expanded = false
-                            onSessionSelect(session.id)
-                        },
-                    )
+                val tint = if (idle) Accent else TextDim
+                Canvas(Modifier.size(18.dp)) {
+                    drawLine(tint, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height), 2.dp.toPx(), StrokeCap.Round)
+                    drawLine(tint, Offset(0f, size.height / 2), Offset(size.width, size.height / 2), 2.dp.toPx(), StrokeCap.Round)
                 }
-                DropdownMenuItem(
-                    text = { Text("Delete all", color = Warn, fontFamily = MonoFamily, fontSize = 13.sp) },
-                    onClick = {
-                        expanded = false
-                        confirmDeleteAll = true
-                    },
+                Spacer(Modifier.width(14.dp))
+                Text("New conversation", color = tint, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
+            if (state.sessions.isEmpty()) {
+                Text(
+                    text = "Conversations you have are saved here.",
+                    color = TextDim,
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(20.dp),
+                )
+            } else {
+                LazyColumn(Modifier.weight(1f)) {
+                    items(state.sessions, key = { it.id }) { session ->
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clickable(enabled = idle) { onSessionSelect(session.id) }
+                                    .padding(start = 20.dp, end = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = session.title,
+                                color = if (idle) TextPrimary else TextDim,
+                                fontSize = 15.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).padding(vertical = 14.dp),
+                            )
+                            GlyphButton(
+                                GlyphKind.CLOSE,
+                                "Delete conversation ${session.title}",
+                                tint = TextDim,
+                                onClick = { onSessionDelete(session.id) },
+                            )
+                        }
+                    }
+                }
+                Box(Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
+                Text(
+                    text = "Delete all history",
+                    color = Warn,
+                    fontSize = 15.sp,
+                    modifier = Modifier.fillMaxWidth().clickable(onClick = onDeleteAll).padding(20.dp),
                 )
             }
         }
     }
 }
 
-/** Bare-bones model picker: tap the current model's filename to pick a
- *  different .gguf from ModelManager.listAvailableModels. Only enabled while
- *  idle, so it can't yank the handle out from under an in-flight turn.
+/** Model and voice pickers, merged into one bottom sheet. Idle-gated for the
+ *  same reason as the conversation list; switching voices never reloads the
+ *  TTS handle (the name is passed per utterance), but the gate keeps the two
+ *  pickers behaving alike.
  */
 @Composable
-private fun ModelPicker(
+private fun SettingsSheet(
     state: JarvisUiState,
     onModelSelect: (String) -> Unit,
+    onVoiceSelect: (String) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val enabled = state.phase == Phase.IDLE && state.availableModels.size > 1
-    Box {
-        Text(
-            text = state.selectedModelName,
-            color = if (enabled) TextDim else TextDim.copy(alpha = 0.5f),
-            fontFamily = MonoFamily,
-            fontSize = 11.sp,
-            modifier = Modifier.clickable(enabled = enabled) { expanded = true },
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            for (name in state.availableModels) {
-                DropdownMenuItem(
-                    text = { Text(name, fontFamily = MonoFamily, fontSize = 13.sp) },
-                    onClick = {
-                        expanded = false
-                        onModelSelect(name)
-                    },
-                )
-            }
+    val idle = state.phase == Phase.IDLE
+    Column(Modifier.verticalScroll(rememberScrollState()).navigationBarsPadding().padding(bottom = 16.dp)) {
+        if (!idle) {
+            Text(
+                text = "Model and voice can be changed when Jarvis is idle.",
+                color = TextDim,
+                fontSize = 14.sp,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
         }
+        SettingsGroup("Language model", state.availableModels, state.selectedModelName, idle, onModelSelect)
+        SettingsGroup("Voice", state.availableVoices, state.selectedVoiceName, idle, onVoiceSelect)
     }
 }
 
-/** Bare-bones voice picker, same shape as ModelPicker: tap the current voice
- *  name to pick a different cloned-voice reference clip. Switching voices
- *  never touches ttsHandle (the name is just passed to streamStart per
- *  utterance), so unlike the model picker there's no reload in flight, but
- *  it's still idle-gated for UI consistency with the other pickers.
- */
 @Composable
-private fun VoicePicker(
-    state: JarvisUiState,
-    onVoiceSelect: (String) -> Unit,
+private fun SettingsGroup(
+    title: String,
+    options: List<String>,
+    selected: String,
+    enabled: Boolean,
+    onSelect: (String) -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val enabled = state.phase == Phase.IDLE && state.availableVoices.size > 1
-    Box {
-        Text(
-            text = state.selectedVoiceName,
-            color = if (enabled) TextDim else TextDim.copy(alpha = 0.5f),
-            fontFamily = MonoFamily,
-            fontSize = 11.sp,
-            modifier = Modifier.clickable(enabled = enabled) { expanded = true },
-        )
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            for (name in state.availableVoices) {
-                DropdownMenuItem(
-                    text = { Text(name, fontFamily = MonoFamily, fontSize = 13.sp) },
-                    onClick = {
-                        expanded = false
-                        onVoiceSelect(name)
+    Text(
+        text = title,
+        color = TextDim,
+        fontSize = 14.sp,
+        modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 4.dp),
+    )
+    for (name in options) {
+        val isSelected = name == selected
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clickable(enabled = enabled && !isSelected) { onSelect(name) }
+                    .padding(horizontal = 24.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                Modifier
+                    .size(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (isSelected) Accent else Color.Transparent),
+            )
+            Spacer(Modifier.width(16.dp))
+            Text(
+                text = name,
+                color =
+                    if (isSelected) {
+                        Accent
+                    } else if (enabled) {
+                        TextPrimary
+                    } else {
+                        TextDim
                     },
-                )
-            }
+                fontSize = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -506,65 +615,92 @@ private fun TranscriptLog(
     LaunchedEffect(state.turns.size) {
         if (state.turns.isNotEmpty()) listState.animateScrollToItem(state.turns.size - 1)
     }
-    LazyColumn(state = listState, modifier = modifier.fillMaxWidth()) {
+    LazyColumn(
+        state = listState,
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+    ) {
         items(state.turns) { turn -> TurnRow(turn) }
-        item {
-            if (state.errorMessage != null) {
-                Spacer(Modifier.height(10.dp))
-                Text(state.errorMessage!!, color = Warn, fontFamily = MonoFamily, fontSize = 13.sp)
-            }
+        state.errorMessage?.let { message ->
+            item { Text(message, color = Warn, fontSize = 14.sp) }
         }
     }
 }
 
+/** Jarvis replies read as plain text on the page, marked by the accent
+ *  hairline; only the user's words sit in a bubble, so the two voices are
+ *  told apart by shape rather than by which edge they hug.
+ */
 @Composable
 private fun TurnRow(turn: Turn) {
     val isUser = turn.speaker == Speaker.USER
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+    val timing = if (isUser) "spoke ${formatDuration(turn.durationMs)}" else "replied in ${formatDuration(turn.durationMs)}"
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
     ) {
-        if (!isUser) {
-            Box(Modifier.width(12.dp), contentAlignment = Alignment.TopStart) {
-                Box(Modifier.width(2.dp).height(18.dp).background(Accent))
-            }
-        }
-        Column(horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
-            Text(
-                text =
-                    if (isUser) {
-                        "${formatDuration(turn.durationMs)} You"
-                    } else {
-                        "Jarvis ${formatDuration(turn.durationMs)}"
-                    },
-                color = TextDim,
-                fontFamily = MonoFamily,
-                fontSize = 11.sp,
-            )
-            val textColor = if (isUser) TextDim else TextPrimary
-            for (block in remember(turn.text) { Markdown.parse(turn.text) }) {
-                when (block) {
-                    is MarkdownBlock.Paragraph ->
-                        Text(
-                            text = paragraphAnnotatedString(block.spans, textColor),
-                            fontSize = 17.sp,
-                            fontWeight = if (isUser) FontWeight.Normal else FontWeight.Medium,
-                            lineHeight = 23.sp,
-                            textAlign = if (isUser) TextAlign.End else TextAlign.Start,
-                        )
-                    is MarkdownBlock.CodeBlock ->
-                        Box(
-                            modifier =
-                                Modifier
-                                    .padding(vertical = 4.dp)
-                                    .border(width = 1.dp, color = DividerColor)
-                                    .horizontalScroll(rememberScrollState())
-                                    .padding(10.dp),
-                        ) {
-                            Text(block.code, color = TextPrimary, fontFamily = MonoFamily, fontSize = 14.sp, lineHeight = 19.sp)
-                        }
+        if (isUser) {
+            Column(
+                modifier =
+                    Modifier
+                        .widthIn(max = 320.dp)
+                        .clip(RoundedCornerShape(20.dp, 20.dp, 6.dp, 20.dp))
+                        .background(BubbleColor)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                if (turn.text.isBlank()) {
+                    Text("Nothing heard", color = TextDim, fontSize = 16.sp, lineHeight = 23.sp)
+                } else {
+                    TurnBody(turn.text, TextPrimary, 16.sp, 23.sp, TextAlign.Start)
                 }
             }
+        } else {
+            Row(Modifier.height(IntrinsicSize.Min)) {
+                Box(Modifier.width(2.dp).fillMaxHeight().background(Accent.copy(alpha = 0.7f)))
+                Spacer(Modifier.width(14.dp))
+                Column { TurnBody(turn.text, TextPrimary, 17.sp, 26.sp, TextAlign.Start) }
+            }
+        }
+        Text(
+            text = timing,
+            color = TextDim,
+            fontFamily = MonoFamily,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(top = 6.dp, start = if (isUser) 0.dp else 16.dp),
+        )
+    }
+}
+
+@Composable
+private fun TurnBody(
+    text: String,
+    color: Color,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    align: TextAlign,
+) {
+    for (block in remember(text) { Markdown.parse(text) }) {
+        when (block) {
+            is MarkdownBlock.Paragraph ->
+                Text(
+                    text = paragraphAnnotatedString(block.spans, color),
+                    fontSize = fontSize,
+                    lineHeight = lineHeight,
+                    textAlign = align,
+                )
+            is MarkdownBlock.CodeBlock ->
+                Box(
+                    modifier =
+                        Modifier
+                            .padding(vertical = 4.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(BgColor)
+                            .horizontalScroll(rememberScrollState())
+                            .padding(10.dp),
+                ) {
+                    Text(block.code, color = TextPrimary, fontFamily = MonoFamily, fontSize = 14.sp, lineHeight = 19.sp)
+                }
         }
     }
 }
@@ -582,7 +718,6 @@ private fun paragraphAnnotatedString(
     }
 }
 
-private const val RING_DIAMETER_DP = 176
 private const val HOLD_TO_STOP_MS = 550
 
 /** The one hero moment on screen: a radial voiceprint ring rather than the
@@ -598,8 +733,10 @@ private fun MicControl(
     onTap: () -> Unit,
     onPauseToggle: () -> Unit,
     onStopTap: () -> Unit,
+    diameter: Dp,
 ) {
     val scope = rememberCoroutineScope()
+    val scale = diameter.value / 176f
     val holdProgress = remember { Animatable(0f) }
     // Safety net so a completed or interrupted hold never leaves a stale red
     // ring showing once the phase has actually moved on (e.g. right after
@@ -640,7 +777,7 @@ private fun MicControl(
         Canvas(
             modifier =
                 Modifier
-                    .size(RING_DIAMETER_DP.dp)
+                    .size(diameter)
                     .then(
                         if (holdToStop) {
                             Modifier.pointerInput(isSpeaking) {
@@ -686,7 +823,12 @@ private fun MicControl(
                     state.phase == Phase.ERROR -> Warn
                     else -> TextDim.copy(alpha = 0.5f)
                 }
-            drawCircle(color = ringColor.copy(alpha = 0.3f), radius = baseRadius, center = center, style = Stroke(width = 1.5.dp.toPx()))
+            drawCircle(
+                color = ringColor.copy(alpha = 0.3f),
+                radius = baseRadius,
+                center = center,
+                style = Stroke(width = (1.5f * scale).coerceAtLeast(1f).dp.toPx()),
+            )
             if (holdProgress.value > 0f) {
                 // Traces the same base circle rather than adding a separate
                 // shape: holding to stop reads as claiming the ring itself,
@@ -698,7 +840,7 @@ private fun MicControl(
                     useCenter = false,
                     topLeft = center - Offset(baseRadius, baseRadius),
                     size = Size(baseRadius * 2f, baseRadius * 2f),
-                    style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(width = (3f * scale).coerceAtLeast(2f).dp.toPx(), cap = StrokeCap.Round),
                 )
             }
             for (i in 0 until barCount) {
@@ -719,7 +861,7 @@ private fun MicControl(
                     color = ringColor,
                     start = center + dir * baseRadius,
                     end = center + dir * (baseRadius + tickLen),
-                    strokeWidth = 2.5.dp.toPx(),
+                    strokeWidth = (2.5f * scale).coerceAtLeast(1.6f).dp.toPx(),
                     cap = StrokeCap.Round,
                 )
             }
@@ -730,18 +872,18 @@ private fun MicControl(
                     color = Accent,
                     start = center,
                     end = center + sweepDir * (baseRadius + maxTickLen),
-                    strokeWidth = 1.5.dp.toPx(),
+                    strokeWidth = (1.5f * scale).coerceAtLeast(1f).dp.toPx(),
                 )
             }
-            drawCircle(color = ringColor, radius = 3.dp.toPx(), center = center)
+            drawCircle(color = ringColor, radius = (3f * scale).coerceAtLeast(2f).dp.toPx(), center = center)
         }
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(if (scale > 1f) 20.dp else 8.dp))
         val showsElapsed = state.phase == Phase.LISTENING || state.phase == Phase.THINKING || state.phase == Phase.SPEAKING
         Text(
             text = if (showsElapsed) "${state.caption} ${state.stageElapsedSeconds}s" else state.caption,
             color = TextDim,
             fontFamily = MonoFamily,
-            fontSize = 13.sp,
+            fontSize = if (scale > 1f) 15.sp else 13.sp,
             textAlign = TextAlign.Center,
         )
         // Fixed-height slot regardless of phase, so the ring above never
@@ -771,4 +913,4 @@ private fun MicControl(
     }
 }
 
-private const val BELOW_CAPTION_HEIGHT_DP = 20
+private const val BELOW_CAPTION_HEIGHT_DP = 22

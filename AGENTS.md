@@ -99,7 +99,7 @@ needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
 ## Model strategy
 
 - **STT** (`ggml-base.en-q5_1.bin`, ~57MB) and **LLM**
-  (`Llama-3.2-1B-Instruct-Q4_K_M.gguf`, ~770MB) are downloaded on first use
+  (`Llama-3.2-3B-Instruct-Q4_K_M.gguf`, ~2GB) are downloaded on first use
   from public HuggingFace URLs (see `ModelManager.STT_URL` /
   `DEFAULT_LLM_URL`), not bundled in the APK. `ModelDownloader.kt` streams
   to a `.part` file, hashing as it writes, and only renames to the final
@@ -120,7 +120,7 @@ needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
 - The LLM is user-swappable at runtime: drop a `.gguf` into
   `ModelManager.externalModelsDir()` (app-specific external storage, no
   permissions needed, reachable via `adb push`) and pick it from the model
-  picker in the top bar while idle. Chat prompt formatting is **not**
+  settings sheet (sliders button in the top bar) while idle. Chat prompt formatting is **not**
   hardcoded per model, `NativeLLM.nativeFormatPrompt()` calls llama.cpp's
   `llama_chat_apply_template()`, which reads the template embedded in
   whatever `.gguf` is loaded. Don't reintroduce a hardcoded template string,
@@ -136,6 +136,22 @@ needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
   move the persist call earlier, a bad file would get stuck as the
   permanent selection across restarts (this exact bug was hit and fixed
   once already).
+
+## UI layout (as of 2026-09-19)
+
+Modeled on AI chat apps, all in `JarvisScreen.kt`, no icon library (glyphs
+are drawn on `Canvas` in `GlyphButton`):
+- Top bar: menu button (opens `HistoryDrawer`, a `ModalNavigationDrawer`),
+  title, and a sliders button (opens `SettingsSheet`, a `ModalBottomSheet`
+  holding the model and voice lists). Both lists are idle-gated.
+- Empty conversation: the voice ring is large and centered (hero). Once
+  there are turns it shrinks to a dock under the transcript. `MicControl`
+  takes a `diameter` and scales its strokes with it.
+- Transcript: Jarvis replies are plain text with an accent hairline; user
+  turns are right-aligned bubbles. Each turn has a small timing footnote.
+- Warm-up still shows the telemetry row and the Breakout game.
+Verify UI changes on-device with screencap: `adb shell screencap -p
+/sdcard/x.png` then `adb pull` (PowerShell `>` redirection corrupts PNGs).
 
 ## Tool calling
 
@@ -155,7 +171,7 @@ TTS, VAD auto-stop recording, parallel engine warm-up with real/approximate
 load-progress UI, LLM model switching, pause/resume for TTS playback, model
 download-on-first-launch for STT+LLM, a "Stop" control that aborts an
 in-flight listen/think/speak turn, session history (auto-save to local JSON,
-"New"/"History" in the top bar to start fresh or resume/delete a past
+"New conversation" and the saved list in the side drawer to start fresh or resume/delete a past
 conversation, see README's "Session history"), ktlint + JaCoCo wired up, 64
 passing JUnit tests (`VoicePipeline`, `SilenceDetector`, `MiniJson`,
 `SessionCodec`, `SessionStore`, `Markdown`, `ModelManager` logic only,
@@ -164,10 +180,9 @@ since instrumented/Robolectric tests were explicitly deferred in favor of
 fast local-only JUnit).
 
 Not done / open follow-ups:
-- Session history has no pruning/size cap (see README) and the "History"
-  list/rename/delete UI hasn't been visually verified on a device, only
-  compiled and unit-tested (no device was available to install to when
-  this was built).
+- Session history has no pruning/size cap (see README). The history drawer
+  was opened and screenshotted on the Pixel 8 Pro on 2026-09-19 (list and
+  layout render correctly); resume/delete taps were not exercised.
 - TTS models not downloadable (needs a hosting decision from the user).
 - No release/signing config, only debug builds exist. Fine for sideloading
   to a friend; would need a keystore + `signingConfig` for anything wider.
@@ -203,9 +218,8 @@ Roughly in priority order. Pick from the top unless told otherwise.
 3. **No CI.** `ktlintCheck` and `testDebugUnitTest` both run in seconds; add
    a GitHub Actions workflow that runs them on push/PR so "you are the CI"
    (see Build/test/lint above) stops being literally true.
-4. Session history has no pruning/size cap, and the History list/rename/
-   delete UI hasn't been visually verified on a device (carried over from
-   the previous backlog note).
+4. Session history has no pruning/size cap, and there is no rename UI
+   (carried over from the previous backlog note).
 5. Session data (`SessionStore`) is unencrypted, unbounded JSON on disk --
    worth a size cap and, if this is ever used for anything sensitive, an
    at-rest encryption pass.
