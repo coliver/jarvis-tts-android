@@ -42,7 +42,7 @@ private const val LLM_MAX_TOKENS = 200
 
 // Approximate download sizes shown in the not-on-Wi-Fi prompt; display only.
 private const val STT_SIZE_MB = 57
-private const val LLM_SIZE_MB = 770
+private const val LLM_SIZE_MB = 2020
 
 // Rest of LLM_N_CTX after reserving room for the generated reply. Also has to
 // cover the persona system prompt and the current utterance, not just history,
@@ -295,7 +295,7 @@ class MainActivity : ComponentActivity() {
             val totalMb = info.totalMem / (1024 * 1024)
             uiState.lowMemoryWarning =
                 "This device has ~${totalMb}MB RAM. The default language model " +
-                "(~770MB) may fail to load; if it does, try a smaller .gguf from the model picker."
+                "(~2GB) may fail to load; if it does, try a smaller .gguf from the model picker."
         }
     }
 

@@ -19,14 +19,14 @@ object ModelManager {
     private const val PERSONAS_ASSET = "personas.json"
     private val VOICE_EXTENSIONS = setOf("wav", "mp3", "flac", "ogg", "m4a", "aac")
 
-    const val DEFAULT_LLM_FILENAME = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+    const val DEFAULT_LLM_FILENAME = "Llama-3.2-3B-Instruct-Q4_K_M.gguf"
     const val DEFAULT_LLM_URL =
-        "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/$DEFAULT_LLM_FILENAME"
+        "https://huggingface.co/bartowski/Llama-3.2-3B-Instruct-GGUF/resolve/main/$DEFAULT_LLM_FILENAME"
 
     // Git LFS sha256 oid for the file above, from the `x-linked-etag` response header on a
     // HEAD request to DEFAULT_LLM_URL -- HuggingFace's LFS-backed content hash, not something
     // computed locally. Update this if DEFAULT_LLM_URL is ever repointed at a different file.
-    const val DEFAULT_LLM_SHA256 = "6f85a640a97cf2bf5b8e764087b1e83da0fdb51d7c9fab7d0fece9385611df83"
+    const val DEFAULT_LLM_SHA256 = "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff"
 
     const val STT_FILENAME = "ggml-base.en-q5_1.bin"
     const val STT_URL =
@@ -155,7 +155,7 @@ object ModelManager {
             ?: DEFAULT_LLM_FILENAME
     }
 
-    // Below this, a ~770MB gguf load plus whisper.cpp/TTS's own working set risks a
+    // Below this, a ~2GB gguf load plus whisper.cpp/TTS's own working set risks a
     // native allocation failure (see llm_jni_bridge.cpp's try/catch around llama_init,
     // which turns that into a recoverable "llama_init failed" instead of a process
     // crash -- but a heads-up before the attempt is friendlier than just letting the

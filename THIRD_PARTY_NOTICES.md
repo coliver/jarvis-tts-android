@@ -56,8 +56,8 @@ weights are from OpenAI and are licensed under the MIT License.
 
 ## Llama 3.2 language model (downloaded at runtime)
 
-`Llama-3.2-1B-Instruct-Q4_K_M.gguf` is downloaded from Hugging Face
-(`bartowski/Llama-3.2-1B-Instruct-GGUF`) on first use, not bundled. It is
+`Llama-3.2-3B-Instruct-Q4_K_M.gguf` is downloaded from Hugging Face
+(`bartowski/Llama-3.2-3B-Instruct-GGUF`) on first use, not bundled. It is
 Meta's Llama 3.2, governed by the Llama 3.2 Community License and Acceptable
 Use Policy (https://www.llama.com/llama3_2/license/). It allows commercial
 use but is not an OSI open-source license. If you redistribute the model or a
