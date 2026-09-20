@@ -137,6 +137,20 @@ needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
   permanent selection across restarts (this exact bug was hit and fixed
   once already).
 
+## Prompt evaluation cost (as of 2026-09-19)
+
+On the Pixel 8 Pro with the 3B model, evaluating a ~300-token prompt took 18-30s
+while decoding ran ~4 tok/s, so the wait before the first word is prompt
+evaluation, not generation. `nativeGenerate` keeps the KV cache for the shared
+prompt prefix (`cachedTokens` in `LlmSession`) and only evaluates the new tail;
+follow-up turns dropped to ~7s. Do not go back to `llama_kv_cache_clear` per call.
+Tried and dropped: streaming the reply into TTS sentence by sentence (LLM and TTS
+fight for CPU, so speech stuttered and trailed the text; only saved a few seconds
+because decode is short next to prefill) and `use_mmap=false` (prefill got worse).
+The streaming attempt is saved as `.claude/streaming-attempt.patch`. Remaining
+levers if the first-word wait is still too long: a shorter persona prompt
+(jarvis is ~840 chars) or the 1B model (~3x faster prefill).
+
 ## UI layout (as of 2026-09-19)
 
 Modeled on AI chat apps, all in `JarvisScreen.kt`, no icon library (glyphs

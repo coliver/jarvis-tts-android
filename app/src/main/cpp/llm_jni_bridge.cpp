@@ -16,6 +16,8 @@ struct LlmSession {
     llama_model *model;
     llama_context *ctx;
     std::atomic<bool> cancelRequested{false};
+    // Tokens whose KV entries are currently valid in ctx (the last prompt, not its reply).
+    std::vector<llama_token> cachedTokens;
 };
 
 static int nThreads() {
@@ -172,11 +174,6 @@ Java_com_jarvistts_NativeLLM_nativeGenerate(JNIEnv *env, jobject, jlong handle, 
     llama_model *model = session->model;
     llama_context *ctx = session->ctx;
     session->cancelRequested.store(false);
-    // Every call gets the full prompt (persona + history + utterance), so start from an
-    // empty KV cache. Without this, positions keep accumulating across turns until the
-    // 2048-token context is full and llama_decode fails instantly, returning "".
-    llama_kv_cache_clear(ctx);
-
     const char *prompt_chars = env->GetStringUTFChars(prompt, nullptr);
     std::string prompt_str(prompt_chars);
     env->ReleaseStringUTFChars(prompt, prompt_chars);
@@ -186,6 +183,26 @@ Java_com_jarvistts_NativeLLM_nativeGenerate(JNIEnv *env, jobject, jlong handle, 
     if (llama_tokenize(model, prompt_str.c_str(), (int) prompt_str.size(),
                         prompt_tokens.data(), (int) prompt_tokens.size(), true, true) < 0) {
         return env->NewStringUTF("");
+    }
+
+    // Every call gets the full prompt (persona + history + utterance), but the start of it
+    // (persona, earlier turns) is usually identical to last time. Keep those KV entries and
+    // only evaluate the new tail: prompt evaluation is the slowest part of a turn on this
+    // phone (18-30s for ~300 tokens uncached, ~7s with the prefix reused). Everything after
+    // the shared prefix, including last turn's generated reply, is dropped so positions never
+    // pile up past the context window (which made llama_decode fail instantly, returning "").
+    // cachedTokens stays empty until this prompt's first decode succeeds, so a cancelled or
+    // failed call falls back to a full clear next time.
+    size_t common = 0;
+    while (common < session->cachedTokens.size() && common < prompt_tokens.size() &&
+           session->cachedTokens[common] == prompt_tokens[common]) {
+        common++;
+    }
+    if (common >= prompt_tokens.size()) common = prompt_tokens.size() - 1; // need logits for the last token
+    session->cachedTokens.clear();
+    if (!llama_kv_cache_seq_rm(ctx, 0, (llama_pos) common, -1)) {
+        llama_kv_cache_clear(ctx);
+        common = 0;
     }
 
     auto sparams = llama_sampler_chain_default_params();
@@ -201,7 +218,7 @@ Java_com_jarvistts_NativeLLM_nativeGenerate(JNIEnv *env, jobject, jlong handle, 
     llama_sampler_chain_add(smpl, llama_sampler_init_greedy());
 
     std::string result;
-    llama_batch batch = llama_batch_get_one(prompt_tokens.data(), (int) prompt_tokens.size());
+    llama_batch batch = llama_batch_get_one(prompt_tokens.data() + common, (int) (prompt_tokens.size() - common));
 
     __android_log_print(ANDROID_LOG_DEBUG, "JarvisLLM",
                          "n_threads=%d, arm_fma=%d, fp16_va=%d, n_prompt=%d",
@@ -211,7 +228,7 @@ Java_com_jarvistts_NativeLLM_nativeGenerate(JNIEnv *env, jobject, jlong handle, 
     long long prefillMs = -1;
     int n_decode = 0;
     llama_token new_token_id;
-    for (int n_pos = 0; n_pos + batch.n_tokens < n_prompt + maxTokens;) {
+    for (int n_pos = (int) common; n_pos + batch.n_tokens < n_prompt + maxTokens;) {
         if (session->cancelRequested.load()) {
             break;
         }
@@ -219,10 +236,11 @@ Java_com_jarvistts_NativeLLM_nativeGenerate(JNIEnv *env, jobject, jlong handle, 
             break;
         }
         if (prefillMs < 0) {
+            session->cachedTokens = prompt_tokens;
             prefillMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - genStart).count();
             __android_log_print(ANDROID_LOG_DEBUG, "JarvisLLM",
-                                 "prefill (%d prompt tokens) took %lldms", n_prompt, prefillMs);
+                                 "prefill (%d prompt tokens, %d reused) took %lldms", n_prompt, (int) common, prefillMs);
         }
         n_pos += batch.n_tokens;
 
