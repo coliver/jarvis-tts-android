@@ -147,9 +147,8 @@ follow-up turns dropped to ~7s. Do not go back to `llama_kv_cache_clear` per cal
 Tried and dropped: streaming the reply into TTS sentence by sentence (LLM and TTS
 fight for CPU, so speech stuttered and trailed the text; only saved a few seconds
 because decode is short next to prefill) and `use_mmap=false` (prefill got worse).
-The streaming attempt is saved as `.claude/streaming-attempt.patch`. Remaining
-levers if the first-word wait is still too long: a shorter persona prompt
-(jarvis is ~840 chars) or the 1B model (~3x faster prefill).
+Remaining levers if the first-word wait is still too long: a shorter persona
+prompt (jarvis is ~840 chars) or the 1B model (~3x faster prefill).
 
 ## UI layout (as of 2026-09-19)
 
