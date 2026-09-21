@@ -41,20 +41,20 @@ Tap the voice ring
       ↓
 Voice activity detection
       ↓
-Whisper.cpp — speech to text
+Whisper.cpp: speech to text
       ↓
-Tool router — time, battery, timer, email, Wikipedia (skips the LLM on a match)
+Tool router: time, battery, timer, email, Wikipedia (skips the LLM on a match)
       ↓
-Llama.cpp — generates a reply
+Llama.cpp: generates a reply
       ↓
-Pocket-TTS / omatts — text to speech
+Pocket-TTS / omatts: text to speech
       ↓
-AudioTrack — streams the audio
+AudioTrack: streams the audio
 ```
 
 - Recording stops automatically when you stop speaking; there's no button to hold down.
 - All three engines warm up in parallel when the app starts, each with its own loading/download progress.
-- Hold the voice ring at any point — listening, thinking, or speaking — to cancel that turn immediately. While speaking, a tap pauses or resumes playback.
+- Hold the voice ring at any point (listening, thinking, or speaking) to cancel that turn immediately. While speaking, a tap pauses or resumes playback.
 - Simple requests (time, battery, timers, drafting an email, Wikipedia lookups) are matched by keyword before the LLM and answered directly by the app.
 - Recent turns from the current conversation are included in each prompt, so follow-up questions work without repeating context, bounded by the loaded model's context window.
 
@@ -120,12 +120,12 @@ On native Linux (or macOS, or WSL with USB passthrough already configured), plug
 adb install app/build/outputs/apk/debug/app-debug.apk
 ```
 
-If `adb devices` shows the phone as `unauthorized`, accept the RSA key prompt on the phone screen and re-run it. If it shows `no permissions`, your user likely needs a udev rule for the device — see [Android udev rules](https://github.com/M0Rf30/android-udev-rules) — or fall back to `sudo adb install ...`.
+If `adb devices` shows the phone as `unauthorized`, accept the RSA key prompt on the phone screen and re-run it. If it shows `no permissions`, your user likely needs a udev rule for the device (see [Android udev rules](https://github.com/M0Rf30/android-udev-rules)), or fall back to `sudo adb install ...`.
 
 **WSL2 usually can't reach a phone over USB directly**, since there's no USB passthrough by default. Use one of these instead:
 
 <details>
-<summary><strong>Option A — Wireless debugging</strong></summary>
+<summary><strong>Option A: Wireless debugging</strong></summary>
 
 1. Enable **Wireless debugging** in Android Developer Options.
 2. Pair the phone:
@@ -151,7 +151,7 @@ This can be unreliable during large file transfers.
 </details>
 
 <details>
-<summary><strong>Option B — Windows ADB over USB</strong></summary>
+<summary><strong>Option B: Windows ADB over USB</strong></summary>
 
 Use this if Windows already detects the phone with ADB.
 
@@ -198,7 +198,7 @@ adb push model.gguf \
   /sdcard/Android/data/com.jarvistts/files/llm/
 ```
 
-Chat formatting is detected automatically from the loaded model — no code changes needed.
+Chat formatting is detected automatically from the loaded model, no code changes needed.
 
 ### Text-to-speech
 
@@ -214,7 +214,7 @@ STT and LLM models are downloaded instead of bundled so the APK stays around **1
 
 ## Session history
 
-Every conversation is saved automatically as it happens — there's no manual save step.
+Every conversation is saved automatically as it happens, there's no manual save step.
 
 Open the side drawer with the menu button at the top left.
 
@@ -226,7 +226,7 @@ Starting or resuming a conversation is only available while the app is idle.
 
 Sessions are stored as JSON files under the app's internal `files/sessions/` directory. A session is written after every completed, stopped, or errored turn, so a killed or backgrounded app loses at most the single in-flight turn.
 
-Saved conversations are capped at 200 — creating a new one beyond that prunes the oldest-updated session automatically. Each session is small, so this cap is generous in practice.
+Saved conversations are capped at 200: creating a new one beyond that prunes the oldest-updated session automatically. Each session is small, so this cap is generous in practice.
 
 ## Project layout
 
@@ -274,7 +274,7 @@ app/src/main/
     └── ModelManagerTest.kt
 ```
 
-STT and LLM models are not included in `assets/` — they download the first time they're needed. The TTS model is currently bundled with the app.
+STT and LLM models are not included in `assets/`, they download the first time they're needed. The TTS model is currently bundled with the app.
 
 ## Native libraries
 
@@ -292,7 +292,7 @@ The build intentionally forces Release mode (`CMAKE_BUILD_TYPE=Release`). This m
 
 The bundled ONNX models were generated using omatts's `export_onnx.py`.
 
-1. Check out this specific Pocket-TTS commit — later versions removed or renamed modules the export script needs:
+1. Check out this specific Pocket-TTS commit (later versions removed or renamed modules the export script needs):
 
    ```text
    kyutai-labs/pocket-tts
@@ -325,7 +325,7 @@ The debug APK can be sideloaded onto another device. The receiving device needs:
 - An ARM64 processor
 - Permission to install unknown apps
 
-The APK is approximately **175 MB**. Good transfer options include a Drive link, USB, or local file transfer — avoid sending it as a chat attachment.
+The APK is approximately **175 MB**. Good transfer options include a Drive link, USB, or local file transfer. Avoid sending it as a chat attachment.
 
 ### Publishing a GitHub Release
 

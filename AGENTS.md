@@ -46,7 +46,7 @@ warm). There is no CI here catching this later; you are the CI.
 
 `.editorconfig` at the repo root disables ktlint's function-naming rule for
 `@Composable`-annotated functions (PascalCase is correct Compose style, not
-a violation) — don't "fix" that by renaming Composables.
+a violation), don't "fix" that by renaming Composables.
 
 ### Installing on the device
 
@@ -94,7 +94,7 @@ for actual `-O` flags before assuming it's an algorithmic problem.
 top-level CMake configure, needed because llama.cpp and whisper.cpp both
 vendor their own `ggml` with colliding target names). That isolated build
 needs its **own** explicit `-DCMAKE_BUILD_TYPE=Release` in
-`LLAMA_CMAKE_ARGS` — it does not inherit the parent's forced build type.
+`LLAMA_CMAKE_ARGS`, it does not inherit the parent's forced build type.
 
 ## Model strategy
 
@@ -231,9 +231,15 @@ Roughly in priority order. Pick from the top unless told otherwise.
    caught; no crash reporting was added. Unverified: the banner and the
    catch paths were never exercised on-device (only compiled, launched, and
    checked for crashes in logcat).
-3. **No CI.** `ktlintCheck` and `testDebugUnitTest` both run in seconds; add
-   a GitHub Actions workflow that runs them on push/PR so "you are the CI"
-   (see Build/test/lint above) stops being literally true.
+3. ~~No CI.~~ Done (added before 2026-09-19, `.github/workflows/ci.yml`):
+   runs `ktlintCheck`, `testDebugUnitTest`, `assembleDebug` on push to `main`
+   and on PRs; caches `app/.cxx`; uploads the debug APK (voiceless, since
+   `assets/voices/` is gitignored) and lint/test reports as artifacts. Went
+   red for two commits (2026-09-21, stray ktlint violations in
+   `JarvisScreen.kt` from the accessibility pass) and is green again as of
+   `e73d2f5`. "You are the CI" (see Build/test/lint above) is still true in
+   spirit, run the checks locally too, don't rely on the push round-trip to
+   catch it first.
 4. ~~Session history has no pruning/size cap.~~ Done 2026-09-21: `SessionStore`
    caps saved sessions at `MAX_SESSIONS` (200), pruning the oldest-updated one
    past the cap on `create()`. No rename UI still (carried over).
