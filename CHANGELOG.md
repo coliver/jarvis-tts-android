@@ -2,6 +2,11 @@
 
 All notable changes to this project, newest first. Dates are commit dates.
 
+## 2026-09-21
+
+### Added
+- Session history is now capped at 200 saved conversations; the oldest-updated one is pruned automatically each time a new session is created.
+
 ## 2026-09-20
 
 ### Fixed

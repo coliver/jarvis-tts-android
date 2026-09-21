@@ -97,6 +97,7 @@ private val BgColor = Color(0xFF0A0E13)
 private val SurfaceColor = Color(0xFF171D24)
 private val DividerColor = Color(0xFF232B33)
 private val TextPrimary = Color(0xFFE7ECEF)
+
 // 4.43:1 against BgColor, just under WCAG AA's 4.5:1 for normal text; nudged
 // lighter to clear it (~5.3:1) without changing the muted look meaningfully.
 private val TextDim = Color(0xFF7B8794)
@@ -273,7 +274,12 @@ fun JarvisScreen(
                         modifier =
                             Modifier
                                 .clickable { state.lowMemoryWarning = null }
-                                .semantics { onClick(label = "Dismiss warning") { state.lowMemoryWarning = null; true } },
+                                .semantics {
+                                    onClick(label = "Dismiss warning") {
+                                        state.lowMemoryWarning = null
+                                        true
+                                    }
+                                },
                     )
                 }
             }

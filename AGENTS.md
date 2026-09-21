@@ -193,9 +193,12 @@ since instrumented/Robolectric tests were explicitly deferred in favor of
 fast local-only JUnit).
 
 Not done / open follow-ups:
-- Session history has no pruning/size cap (see README). The history drawer
-  was opened and screenshotted on the Pixel 8 Pro on 2026-09-19 (list and
-  layout render correctly); resume/delete taps were not exercised.
+- Session history is capped at `SessionStore.MAX_SESSIONS` (200); `create()`
+  prunes the oldest-updated session past the cap (added 2026-09-21, unit
+  tested, not yet exercised on-device since 200 sessions is impractical to
+  reach by hand). The history drawer was opened and screenshotted on the
+  Pixel 8 Pro on 2026-09-19 (list and layout render correctly); resume/delete
+  taps were not exercised.
 - TTS models not downloadable (needs a hosting decision from the user).
 - No release/signing config, only debug builds exist. Fine for sideloading
   to a friend; would need a keystore + `signingConfig` for anything wider.
@@ -231,8 +234,9 @@ Roughly in priority order. Pick from the top unless told otherwise.
 3. **No CI.** `ktlintCheck` and `testDebugUnitTest` both run in seconds; add
    a GitHub Actions workflow that runs them on push/PR so "you are the CI"
    (see Build/test/lint above) stops being literally true.
-4. Session history has no pruning/size cap, and there is no rename UI
-   (carried over from the previous backlog note).
+4. ~~Session history has no pruning/size cap.~~ Done 2026-09-21: `SessionStore`
+   caps saved sessions at `MAX_SESSIONS` (200), pruning the oldest-updated one
+   past the cap on `create()`. No rename UI still (carried over).
 5. Session data (`SessionStore`) is unencrypted, unbounded JSON on disk --
    worth a size cap and, if this is ever used for anything sensitive, an
    at-rest encryption pass.

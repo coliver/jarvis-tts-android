@@ -12,6 +12,14 @@ private const val TITLE_MAX_LENGTH = 48
  *  (deliberately avoided in this repo, see AGENTS.md).
  */
 class SessionStore(private val baseDir: File) {
+    companion object {
+        /** Cap on saved sessions; [create] deletes the oldest-updated ones
+         *  beyond this so history doesn't grow without bound (AGENTS.md
+         *  backlog). [update] never adds a file, so it doesn't prune.
+         */
+        const val MAX_SESSIONS = 200
+    }
+
     private fun fileFor(id: String) = File(baseDir, "$id.json")
 
     /** Creates and persists a new session from an initial turn list. Turns
@@ -30,6 +38,7 @@ class SessionStore(private val baseDir: File) {
                 turns = turns,
             )
         write(session)
+        prune()
         return session
     }
 
@@ -84,6 +93,19 @@ class SessionStore(private val baseDir: File) {
     private fun write(session: ChatSession) {
         baseDir.mkdirs()
         fileFor(session.id).writeText(SessionCodec.encode(session))
+    }
+
+    /** Deletes the oldest-updated sessions beyond [MAX_SESSIONS]. Files that
+     *  fail to parse are left alone, same as [list] ignoring them.
+     */
+    private fun prune() {
+        val files = baseDir.listFiles { f -> f.isFile && f.extension == "json" } ?: return
+        val decoded = files.mapNotNull { f -> runCatching { f to SessionCodec.decode(f.readText()) }.getOrNull() }
+        if (decoded.size <= MAX_SESSIONS) return
+        decoded
+            .sortedByDescending { (_, session) -> session.updatedAt }
+            .drop(MAX_SESSIONS)
+            .forEach { (file, _) -> file.delete() }
     }
 
     private fun titleFor(turns: List<Turn>): String {

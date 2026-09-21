@@ -226,7 +226,7 @@ Starting or resuming a conversation is only available while the app is idle.
 
 Sessions are stored as JSON files under the app's internal `files/sessions/` directory. A session is written after every completed, stopped, or errored turn, so a killed or backgrounded app loses at most the single in-flight turn.
 
-There is currently no size cap or automatic pruning — sessions accumulate indefinitely. Each one is small, so this is unlikely to matter in practice.
+Saved conversations are capped at 200 — creating a new one beyond that prunes the oldest-updated session automatically. Each session is small, so this cap is generous in practice.
 
 ## Project layout
 

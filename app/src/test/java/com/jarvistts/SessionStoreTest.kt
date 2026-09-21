@@ -132,6 +132,33 @@ class SessionStoreTest {
     }
 
     @Test
+    fun `create prunes the oldest-updated session once past MAX_SESSIONS`() {
+        // A real gap before the rest so it's unambiguously the minimum even though
+        // System.currentTimeMillis() resolution can tie the rapid-fire creates below.
+        val oldest = store.create(turns("oldest"))
+        Thread.sleep(5)
+        repeat(SessionStore.MAX_SESSIONS - 1) { store.create(turns("session $it")) }
+        assertEquals(SessionStore.MAX_SESSIONS, store.list().size)
+
+        store.create(turns("one more"))
+
+        assertEquals(SessionStore.MAX_SESSIONS, store.list().size)
+        assertNull(store.load(oldest.id))
+    }
+
+    @Test
+    fun `update never prunes since it does not add a file`() {
+        val created = store.create(turns("first"))
+        repeat(SessionStore.MAX_SESSIONS - 1) { store.create(turns("session $it")) }
+        assertEquals(SessionStore.MAX_SESSIONS, store.list().size)
+
+        store.update(created.id, turns("first", "second"))
+
+        assertEquals(SessionStore.MAX_SESSIONS, store.list().size)
+        assertEquals(created.id, store.load(created.id)?.id)
+    }
+
+    @Test
     fun `title truncates long text with an ellipsis`() {
         val longText = "a".repeat(80)
 
