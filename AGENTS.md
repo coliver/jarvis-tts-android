@@ -303,11 +303,14 @@ Roughly in priority order. Pick from the top unless told otherwise.
    active network is metered; the lazy load paths honor the same gate.
    Fails open if network state can't be read. Dialog not yet seen on-device
    (Wi-Fi is unmetered and models already present on the test phone).
-7. No wake word, no persistent background service, one-shot tap-to-talk
-   only (carried over).
-8. No instrumented UI tests for `MainActivity`/`JarvisScreen` (carried
+7. No instrumented UI tests for `MainActivity`/`JarvisScreen` (carried
    over; deferred by design so far in favor of fast local-only JUnit).
-9. No release/signing config, only debug builds exist (carried over; fine
+8. No release/signing config, only debug builds exist (carried over; fine
     for sideloading to a friend, needed for anything wider).
-10. TTS models not downloadable, needs a hosting decision from the user
+9. TTS models not downloadable, needs a hosting decision from the user
     (carried over).
+10. No wake word, no persistent background service, one-shot tap-to-talk
+    only (carried over; moved to the bottom 2026-09-21 — real
+    architectural lift, foreground-service permissions + mic-capture
+    lifecycle + a separate wake-word model, and nothing's demonstrated a
+    need for it yet over plain tap-to-talk).
