@@ -7,6 +7,10 @@ All notable changes to this project, newest first. Dates are commit dates.
 ### Added
 - Session history is now capped at 200 saved conversations; the oldest-updated one is pruned automatically each time a new session is created.
 
+### Fixed
+- The transcript used to leave a large empty gap above the docked mic ring during Thinking/Speaking on short conversations; it now sits directly above the ring.
+- The "Hold to stop" / "Tap to pause, hold to stop" hint was dimmed further on top of the already-tuned label color, undoing the contrast fix from 2026-09-20; it's back to full label contrast and a touch larger.
+
 ## 2026-09-20
 
 ### Fixed

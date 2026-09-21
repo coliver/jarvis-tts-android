@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- JARVIS voiceprint dial, echoing the in-app MicControl ring (ring + tick
+     marks + center dot + sweep) at a scale legible for a launcher icon. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- outer ring -->
+    <path
+        android:pathData="M80,54a26,26 0,1 1,-52 0a26,26 0,1 1,52 0"
+        android:strokeColor="#FF4FD6C4"
+        android:strokeWidth="3"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round" />
+    <!-- radar sweep -->
+    <path
+        android:pathData="M54,54 L67.77,34.34"
+        android:strokeColor="#FF4FD6C4"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    <!-- center dot -->
+    <path
+        android:pathData="M57,54a3,3 0,1 1,-6 0a3,3 0,1 1,6 0"
+        android:fillColor="#FF4FD6C4" />
+    <!-- tick marks -->
+    <path
+        android:pathData="M54,27 L54,22 M67.5,30.62 L70,26.29 M77.38,40.5 L81.71,38 M81,54 L86,54 M77.38,67.5 L81.71,70 M67.5,77.38 L70,81.71 M54,81 L54,86 M40.5,77.38 L38,81.71 M30.62,67.5 L26.29,70 M27,54 L22,54 M30.62,40.5 L26.29,38 M40.5,30.62 L38,26.29"
+        android:strokeColor="#FF4FD6C4"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>

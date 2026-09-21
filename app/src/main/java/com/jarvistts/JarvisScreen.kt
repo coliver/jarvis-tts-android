@@ -639,7 +639,7 @@ private fun TranscriptLog(
         state = listState,
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.Bottom),
     ) {
         items(state.turns) { turn -> TurnRow(turn) }
         state.errorMessage?.let { message ->
@@ -948,9 +948,9 @@ private fun MicControl(
             if (hint != null) {
                 Text(
                     text = hint,
-                    color = TextDim.copy(alpha = 0.7f),
+                    color = TextDim,
                     fontFamily = MonoFamily,
-                    fontSize = 11.sp,
+                    fontSize = 12.sp,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 4.dp),
                 )
