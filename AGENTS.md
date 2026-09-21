@@ -303,8 +303,22 @@ Roughly in priority order. Pick from the top unless told otherwise.
    active network is metered; the lazy load paths honor the same gate.
    Fails open if network state can't be read. Dialog not yet seen on-device
    (Wi-Fi is unmetered and models already present on the test phone).
-7. No instrumented UI tests for `MainActivity`/`JarvisScreen` (carried
-   over; deferred by design so far in favor of fast local-only JUnit).
+7. Instrumented UI tests: started 2026-09-21, a smoke test
+   (`JarvisScreenSmokeTest`, `app/src/androidTest`) covering the idle
+   mic-tap and history-drawer-open flows against `JarvisScreen` directly
+   (not `MainActivity`, so it doesn't touch the native STT/LLM/TTS
+   pipeline). Compiles and installs, but unverified on-device: the test
+   phone runs Android API 37, ahead of any released version, and
+   Compose's test harness (pinned by the app's compose-bom 2024.09.00)
+   can't find the composed UI on it ("No compose hierarchies found")
+   even after forcing `espresso-core` to 3.7.0 to get past an earlier
+   `InputManager.getInstance()` reflection failure on the same device.
+   The fix needs a much newer compose-bom, which AGP's consistent-
+   resolution rule forces onto the whole app, which in turn needs
+   compileSdk 37 and AGP 9.1.0+ (currently 8.5.2) -- a real upgrade
+   project of its own, not a test-only change. Left as-is (should run
+   fine on a standard-API emulator or CI) rather than bundling that
+   upgrade in here.
 8. No release/signing config, only debug builds exist (carried over; fine
     for sideloading to a friend, needed for anything wider).
 9. TTS models not downloadable, needs a hosting decision from the user

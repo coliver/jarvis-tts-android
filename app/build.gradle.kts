@@ -17,6 +17,8 @@ android {
         versionCode = 1
         versionName = "0.1"
 
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
@@ -72,6 +74,17 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
 
     testImplementation("junit:junit:4.13.2")
+
+    androidTestImplementation(platform("androidx.compose:compose-bom:2024.09.00"))
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    // Compose's ui-test-junit4 pulls espresso-core 3.5.0 transitively, which
+    // reflects into android.hardware.input.InputManager.getInstance() to
+    // inject motion events -- a method the test device's Android build
+    // (API 37) no longer exposes, so every performClick() failed with
+    // NoSuchMethodException until forced up to 3.7.0.
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 jacoco {
