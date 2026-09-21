@@ -59,12 +59,32 @@ object VoicePipeline {
 /** Tracks speech/silence timing across audio chunks and decides when recording
  *  should auto-stop: once real speech has been heard, then it's been quiet for
  *  [silenceHangMs]. Silence before any speech (e.g. lead-in) never triggers a stop.
+ *
+ *  Uses an *adaptive* noise floor rather than a fixed RMS cutoff. A fixed
+ *  threshold can't work across environments: measured on a real device in a
+ *  room with office background chatter at conversational volume, ambient RMS
+ *  alone ranged ~1600-5100 -- comparable to speech volume, and far above a
+ *  threshold tuned for a quiet room. Instead, the first [CALIBRATION_CHUNKS]
+ *  chunks (before the user is expected to have started speaking, same
+ *  assumption as leading silence never triggering a stop) seed a noise-floor
+ *  estimate from their minimum, and audio has to be [speechMultiplier] times
+ *  louder than that floor to count as speech. The floor keeps drifting toward
+ *  the quietest recent non-speech chunks afterward, so it tracks a background
+ *  level that changes over a long recording.
  */
 class SilenceDetector(
-    private val rmsThreshold: Double,
     private val minSpeechMs: Int,
     private val silenceHangMs: Int,
+    private val speechMultiplier: Double = 1.8,
 ) {
+    companion object {
+        private const val CALIBRATION_CHUNKS = 3
+        private const val MIN_NOISE_FLOOR = 80.0
+        private const val FLOOR_RISE_RATE = 0.1
+    }
+
+    private val calibration = mutableListOf<Double>()
+    private var noiseFloor = MIN_NOISE_FLOOR
     private var speechMs = 0
     private var silentMs = 0
 
@@ -73,11 +93,22 @@ class SilenceDetector(
         rms: Double,
         chunkMs: Int,
     ): Boolean {
-        if (rms > rmsThreshold) {
+        if (calibration.size < CALIBRATION_CHUNKS) {
+            calibration.add(rms)
+            if (calibration.size == CALIBRATION_CHUNKS) {
+                noiseFloor = maxOf(calibration.min(), MIN_NOISE_FLOOR)
+            }
+            return false
+        }
+
+        if (rms > noiseFloor * speechMultiplier) {
             speechMs += chunkMs
             silentMs = 0
             return false
         }
+
+        noiseFloor = if (rms < noiseFloor) rms else noiseFloor + (rms - noiseFloor) * FLOOR_RISE_RATE
+
         if (speechMs < minSpeechMs) return false
         silentMs += chunkMs
         return silentMs >= silenceHangMs

@@ -9,6 +9,9 @@ All notable changes to this project, newest first. Dates are commit dates.
 - Saved conversations are now encrypted at rest with AES-256-GCM, keyed by an Android Keystore key that never leaves secure hardware. Sessions saved before this change still load (a one-time plaintext fallback on read) and get re-encrypted the next time they're updated.
 
 ### Fixed
+- The mic kept recording well past the end of a sentence whenever there was any background noise, running until the 15-second cap instead of stopping shortly after you stopped talking. The fixed volume threshold that decided "is this silence?" couldn't tell background chatter from speech once the room wasn't near-silent (measured on-device: office background noise at conversational volume read 1600-5100, well into normal speech range). Recording now calibrates to the room's actual noise level at the start of each turn and looks for audio meaningfully louder than that, so it works across quiet and noisy rooms instead of being tuned to one.
+
+### Fixed
 - The transcript used to leave a large empty gap above the docked mic ring during Thinking/Speaking on short conversations; it now sits directly above the ring.
 - The "Hold to stop" / "Tap to pause, hold to stop" hint was dimmed further on top of the already-tuned label color, undoing the contrast fix from 2026-09-20; it's back to full label contrast and a touch larger.
 

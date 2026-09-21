@@ -35,7 +35,6 @@ private const val STT_SAMPLE_RATE = 16000
 private const val MAX_RECORD_SECONDS = 15
 private const val SILENCE_HANG_MS = 1000
 private const val MIN_SPEECH_MS = 300
-private const val SILENCE_RMS_THRESHOLD = 400.0
 private const val AMPLITUDE_NORMALIZER = 3000.0f
 private const val LLM_N_CTX = 2048
 private const val LLM_MAX_TOKENS = 200
@@ -665,7 +664,7 @@ class MainActivity : ComponentActivity() {
         val out = ShortArray(maxSamples)
         val chunk = ShortArray(chunkSamples)
         var total = 0
-        val silence = SilenceDetector(SILENCE_RMS_THRESHOLD, MIN_SPEECH_MS, SILENCE_HANG_MS)
+        val silence = SilenceDetector(MIN_SPEECH_MS, SILENCE_HANG_MS)
 
         try {
             recorder.startRecording()

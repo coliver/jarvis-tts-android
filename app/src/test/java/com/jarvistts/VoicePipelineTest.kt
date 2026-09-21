@@ -90,7 +90,19 @@ class VoicePipelineTest {
 }
 
 class SilenceDetectorTest {
-    private fun detector() = SilenceDetector(rmsThreshold = 400.0, minSpeechMs = 300, silenceHangMs = 1000)
+    private fun detector(speechMultiplier: Double = 1.8) =
+        SilenceDetector(minSpeechMs = 300, silenceHangMs = 1000, speechMultiplier = speechMultiplier)
+
+    /** Feeds the 3 calibration chunks every test needs before the detector
+     *  starts classifying speech vs. silence, so each test can control what
+     *  noise floor it's testing against.
+     */
+    private fun calibrate(
+        d: SilenceDetector,
+        ambientRms: Double,
+    ) {
+        repeat(3) { assertFalse(d.accept(rms = ambientRms, chunkMs = 100)) }
+    }
 
     @Test
     fun `never stops on leading silence before any speech`() {
@@ -103,11 +115,9 @@ class SilenceDetectorTest {
     @Test
     fun `stops after silenceHangMs of quiet following enough speech`() {
         val d = detector()
+        calibrate(d, ambientRms = 0.0)
         // 400ms of speech clears minSpeechMs (300ms)
-        assertFalse(d.accept(rms = 1000.0, chunkMs = 100))
-        assertFalse(d.accept(rms = 1000.0, chunkMs = 100))
-        assertFalse(d.accept(rms = 1000.0, chunkMs = 100))
-        assertFalse(d.accept(rms = 1000.0, chunkMs = 100))
+        repeat(4) { assertFalse(d.accept(rms = 1000.0, chunkMs = 100)) }
         // now silence: needs 1000ms (10 x 100ms chunks) to trigger stop
         repeat(9) { assertFalse(d.accept(rms = 0.0, chunkMs = 100)) }
         assertTrue(d.accept(rms = 0.0, chunkMs = 100))
@@ -116,6 +126,7 @@ class SilenceDetectorTest {
     @Test
     fun `brief silence gap does not stop if speech resumes`() {
         val d = detector()
+        calibrate(d, ambientRms = 0.0)
         assertFalse(d.accept(rms = 1000.0, chunkMs = 400)) // clears minSpeechMs
         assertFalse(d.accept(rms = 0.0, chunkMs = 500)) // pause, but under hang threshold
         assertFalse(d.accept(rms = 1000.0, chunkMs = 100)) // resumes speech, resets silence clock
@@ -124,10 +135,36 @@ class SilenceDetectorTest {
     }
 
     @Test
-    fun `speech below threshold never counts as speech`() {
+    fun `audio only a little louder than the noise floor never counts as speech`() {
         val d = detector()
+        calibrate(d, ambientRms = 80.0)
+        // floor calibrates to 80, multiplier 1.8 -> speech threshold 144; stay just under it.
         repeat(50) {
-            assertFalse(d.accept(rms = 399.0, chunkMs = 100))
+            assertFalse(d.accept(rms = 143.0, chunkMs = 100))
         }
+    }
+
+    @Test
+    fun `loud background noise alone is never mistaken for endless speech`() {
+        // Reproduces the reported bug: office background chatter measured on a
+        // real device at RMS 1600-5100, well above what a fixed low threshold
+        // assumed. The floor calibrates to that level, so ambient-only chunks
+        // correctly read as non-speech instead of holding the mic open.
+        val d = detector()
+        calibrate(d, ambientRms = 3000.0)
+        repeat(50) {
+            assertFalse(d.accept(rms = 3000.0, chunkMs = 100))
+        }
+    }
+
+    @Test
+    fun `speech well above a loud noise floor is still detected and stops once the user goes quiet again`() {
+        val d = detector()
+        calibrate(d, ambientRms = 3000.0)
+        // Well above the 3000 * 1.8 = 5400 speech threshold.
+        repeat(4) { assertFalse(d.accept(rms = 9000.0, chunkMs = 100)) }
+        // Drops back to the same ambient level once the user stops talking.
+        repeat(9) { assertFalse(d.accept(rms = 3000.0, chunkMs = 100)) }
+        assertTrue(d.accept(rms = 3000.0, chunkMs = 100))
     }
 }

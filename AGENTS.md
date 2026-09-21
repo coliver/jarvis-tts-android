@@ -150,6 +150,30 @@ because decode is short next to prefill) and `use_mmap=false` (prefill got worse
 Remaining levers if the first-word wait is still too long: a shorter persona
 prompt (jarvis is ~840 chars) or the 1B model (~3x faster prefill).
 
+## VAD auto-stop tuning (as of 2026-09-21)
+
+`SilenceDetector` (`VoicePipeline.kt`) used to gate speech-vs-silence on a
+single fixed RMS threshold (`SILENCE_RMS_THRESHOLD = 400.0` in
+`MainActivity.kt`). That broke down in a real (non-silent) room: measured
+on-device with office background chatter at conversational volume, ambient
+RMS alone ran 1600-5100, comparable to actual speech and far above 400, so
+the "gone quiet" clock never armed and recording ran to the 15s
+`MAX_RECORD_SECONDS` cap every time. A fixed threshold fundamentally can't
+work across rooms since "quiet" and "loud" are relative to the space, not
+an absolute PCM level.
+
+`SilenceDetector` now calibrates instead of using a fixed cutoff: the first
+3 chunks (300ms) seed a noise-floor estimate from their minimum RMS, and
+audio has to be `speechMultiplier` (1.8x) louder than that floor to count
+as speech; the floor keeps drifting toward the quietest non-speech chunks
+afterward to track a background level that changes over a long recording.
+Constructor is now `SilenceDetector(minSpeechMs, silenceHangMs,
+speechMultiplier = 1.8)`, no threshold parameter. Verified live on the
+Pixel 8 Pro with real office background noise (the same environment that
+originally measured 1600-5100 RMS): recording now stops ~1s after speech
+ends (6.2s total for a one-sentence test) instead of hitting the 15s cap,
+with the transcript still coming through correctly.
+
 ## UI layout (as of 2026-09-19)
 
 Modeled on AI chat apps, all in `JarvisScreen.kt`, no icon library (glyphs
