@@ -6,6 +6,7 @@ All notable changes to this project, newest first. Dates are commit dates.
 
 ### Added
 - Session history is now capped at 200 saved conversations; the oldest-updated one is pruned automatically each time a new session is created.
+- Saved conversations are now encrypted at rest with AES-256-GCM, keyed by an Android Keystore key that never leaves secure hardware. Sessions saved before this change still load (a one-time plaintext fallback on read) and get re-encrypted the next time they're updated.
 
 ### Fixed
 - The transcript used to leave a large empty gap above the docked mic ring during Thinking/Speaking on short conversations; it now sits directly above the ring.

@@ -224,7 +224,7 @@ Open the side drawer with the menu button at the top left.
 Starting or resuming a conversation is only available while the app is idle.
 - Titles are generated automatically from the first thing you said.
 
-Sessions are stored as JSON files under the app's internal `files/sessions/` directory. A session is written after every completed, stopped, or errored turn, so a killed or backgrounded app loses at most the single in-flight turn.
+Sessions are stored as encrypted files under the app's internal `files/sessions/` directory, keyed by an Android Keystore key that never leaves secure hardware. A session is written after every completed, stopped, or errored turn, so a killed or backgrounded app loses at most the single in-flight turn.
 
 Saved conversations are capped at 200: creating a new one beyond that prunes the oldest-updated session automatically. Each session is small, so this cap is generous in practice.
 

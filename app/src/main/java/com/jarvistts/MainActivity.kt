@@ -99,7 +99,7 @@ class MainActivity : ComponentActivity() {
 
     private class UserStoppedException : Exception()
 
-    private val sessionStore by lazy { SessionStore(File(filesDir, "sessions")) }
+    private val sessionStore by lazy { SessionStore(File(filesDir, "sessions"), AndroidKeystoreSessionCipher()) }
     private var currentSessionId: String? = null
 
     private fun beginStage(caption: String) {

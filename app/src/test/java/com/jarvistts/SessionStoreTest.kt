@@ -166,4 +166,38 @@ class SessionStoreTest {
 
         assertEquals("a".repeat(48) + "...", created.title)
     }
+
+    /** Reverses the ciphertext bytes: a stand-in for a real cipher that's
+     *  cheap to run under plain JUnit (no Android Keystore available) while
+     *  still proving [SessionStore] round-trips through whatever [SessionCipher]
+     *  it's given rather than always writing plain JSON.
+     */
+    private object ReversingSessionCipher : SessionCipher {
+        override fun encrypt(plaintext: String): ByteArray = plaintext.toByteArray(Charsets.UTF_8).reversedArray()
+
+        override fun decrypt(bytes: ByteArray): String = String(bytes.reversedArray(), Charsets.UTF_8)
+    }
+
+    @Test
+    fun `sessions round-trip through a non-default cipher and are unreadable as plain JSON on disk`() {
+        val encryptedStore = SessionStore(tmp.newFolder("encrypted"), ReversingSessionCipher)
+
+        val created = encryptedStore.create(turns("secret plan"))
+
+        assertEquals(created, encryptedStore.load(created.id))
+        val onDisk = java.io.File(tmp.root, "encrypted/${created.id}.json").readText()
+        assertFalse(onDisk.contains("secret plan"))
+    }
+
+    @Test
+    fun `a session file written before encryption was added still loads under a real cipher`() {
+        val dir = tmp.newFolder("legacy")
+        val legacyStore = SessionStore(dir)
+        val legacy = legacyStore.create(turns("saved before encryption existed"))
+
+        val encryptedStore = SessionStore(dir, ReversingSessionCipher)
+
+        assertEquals(legacy, encryptedStore.load(legacy.id))
+        assertEquals(1, encryptedStore.list().size)
+    }
 }

@@ -5,13 +5,18 @@ import java.util.UUID
 
 private const val TITLE_MAX_LENGTH = 48
 
-/** Filesystem-backed CRUD for saved conversations. Each session is one JSON
- *  file under [baseDir], named "<id>.json", so list/delete are just
- *  directory operations. Takes a plain [File] instead of a Context so this
- *  stays testable under plain JUnit, no Robolectric/instrumented tests
- *  (deliberately avoided in this repo, see AGENTS.md).
+/** Filesystem-backed CRUD for saved conversations. Each session is one file
+ *  under [baseDir], named "<id>.json" and encrypted at rest via [cipher], so
+ *  list/delete are just directory operations. Takes a plain [File] instead
+ *  of a Context so this stays testable under plain JUnit, no
+ *  Robolectric/instrumented tests (deliberately avoided in this repo, see
+ *  AGENTS.md). [cipher] defaults to a no-op so tests don't need an Android
+ *  Keystore; `MainActivity` wires in [AndroidKeystoreSessionCipher].
  */
-class SessionStore(private val baseDir: File) {
+class SessionStore(
+    private val baseDir: File,
+    private val cipher: SessionCipher = PlaintextSessionCipher,
+) {
     companion object {
         /** Cap on saved sessions; [create] deletes the oldest-updated ones
          *  beyond this so history doesn't grow without bound (AGENTS.md
@@ -67,7 +72,7 @@ class SessionStore(private val baseDir: File) {
     fun load(id: String): ChatSession? {
         val file = fileFor(id)
         if (!file.exists()) return null
-        return runCatching { SessionCodec.decode(file.readText()) }.getOrNull()
+        return readSession(file)
     }
 
     /** Most-recently-updated first. Any file that fails to parse (corrupt,
@@ -77,9 +82,21 @@ class SessionStore(private val baseDir: File) {
     fun list(): List<SessionSummary> {
         val files = baseDir.listFiles { f -> f.isFile && f.extension == "json" } ?: return emptyList()
         return files
-            .mapNotNull { f -> runCatching { SessionCodec.decode(f.readText()) }.getOrNull() }
+            .mapNotNull { readSession(it) }
             .map { SessionSummary(it.id, it.title, it.updatedAt) }
             .sortedByDescending { it.updatedAt }
+    }
+
+    /** Decrypts and decodes one session file. Falls back to treating the
+     *  bytes as plain UTF-8 JSON if decryption fails, so sessions saved
+     *  before at-rest encryption was added (or under a different cipher)
+     *  still load instead of silently disappearing; the next [update] or
+     *  [create] rewrites them encrypted.
+     */
+    private fun readSession(file: File): ChatSession? {
+        val bytes = file.readBytes()
+        runCatching { SessionCodec.decode(cipher.decrypt(bytes)) }.getOrNull()?.let { return it }
+        return runCatching { SessionCodec.decode(String(bytes, Charsets.UTF_8)) }.getOrNull()
     }
 
     fun delete(id: String): Boolean = fileFor(id).delete()
@@ -92,7 +109,7 @@ class SessionStore(private val baseDir: File) {
 
     private fun write(session: ChatSession) {
         baseDir.mkdirs()
-        fileFor(session.id).writeText(SessionCodec.encode(session))
+        fileFor(session.id).writeBytes(cipher.encrypt(SessionCodec.encode(session)))
     }
 
     /** Deletes the oldest-updated sessions beyond [MAX_SESSIONS]. Files that
@@ -100,7 +117,7 @@ class SessionStore(private val baseDir: File) {
      */
     private fun prune() {
         val files = baseDir.listFiles { f -> f.isFile && f.extension == "json" } ?: return
-        val decoded = files.mapNotNull { f -> runCatching { f to SessionCodec.decode(f.readText()) }.getOrNull() }
+        val decoded = files.mapNotNull { f -> readSession(f)?.let { f to it } }
         if (decoded.size <= MAX_SESSIONS) return
         decoded
             .sortedByDescending { (_, session) -> session.updatedAt }

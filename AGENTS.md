@@ -185,8 +185,8 @@ load-progress UI, LLM model switching, pause/resume for TTS playback, model
 download-on-first-launch for STT+LLM, a "Stop" control that aborts an
 in-flight listen/think/speak turn, session history (auto-save to local JSON,
 "New conversation" and the saved list in the side drawer to start fresh or resume/delete a past
-conversation, see README's "Session history"), ktlint + JaCoCo wired up, 64
-passing JUnit tests (`VoicePipeline`, `SilenceDetector`, `MiniJson`,
+conversation, see README's "Session history"), ktlint + JaCoCo wired up, 87
+passing JUnit tests as of 2026-09-21 (`VoicePipeline`, `SilenceDetector`, `MiniJson`,
 `SessionCodec`, `SessionStore`, `Markdown`, `ModelManager` logic only,
 anything Android-framework- or Compose-coupled has 0% coverage by design,
 since instrumented/Robolectric tests were explicitly deferred in favor of
@@ -243,9 +243,22 @@ Roughly in priority order. Pick from the top unless told otherwise.
 4. ~~Session history has no pruning/size cap.~~ Done 2026-09-21: `SessionStore`
    caps saved sessions at `MAX_SESSIONS` (200), pruning the oldest-updated one
    past the cap on `create()`. No rename UI still (carried over).
-5. Session data (`SessionStore`) is unencrypted, unbounded JSON on disk --
-   worth a size cap and, if this is ever used for anything sensitive, an
-   at-rest encryption pass.
+5. ~~Session data (`SessionStore`) is unencrypted...~~ Done 2026-09-21:
+   `SessionStore` now takes a `SessionCipher` (`SessionCipher.kt`) and writes
+   sessions through it; `MainActivity` wires in `AndroidKeystoreSessionCipher`
+   (AES-256-GCM, key generated inside the Android Keystore, never exported).
+   The default `PlaintextSessionCipher` keeps `SessionStore` constructible
+   under plain JUnit, no Keystore available there. `readSession()` falls back
+   to parsing raw UTF-8 JSON if decryption fails, so sessions written before
+   this change still load; they're rewritten encrypted on their next `update`/
+   `create`, not proactively migrated, so an old session that's never resumed
+   again stays plaintext on disk indefinitely. Verified live on the Pixel 8
+   Pro: a pre-existing plaintext session loaded and resumed correctly through
+   the fallback path, and a fresh voice turn produced a session file that's
+   opaque ciphertext on disk (checked with `od`, no readable JSON) yet loads
+   back correctly through the app, confirming `AndroidKeystoreSessionCipher`'s
+   real Keystore round-trip works on-device, not just under the unit test's
+   fake `SessionCipher`.
 6. ~~No Wi-Fi-only guard before the first-launch download.~~ Done
    2026-09-19: `MainActivity.warmUp()` shows a "Not on Wi-Fi" dialog
    (Download anyway / Wait for Wi-Fi) with the combined pending size when the
