@@ -36,6 +36,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -69,7 +70,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -92,7 +97,9 @@ private val BgColor = Color(0xFF0A0E13)
 private val SurfaceColor = Color(0xFF171D24)
 private val DividerColor = Color(0xFF232B33)
 private val TextPrimary = Color(0xFFE7ECEF)
-private val TextDim = Color(0xFF6E7A87)
+// 4.43:1 against BgColor, just under WCAG AA's 4.5:1 for normal text; nudged
+// lighter to clear it (~5.3:1) without changing the muted look meaningfully.
+private val TextDim = Color(0xFF7B8794)
 private val Accent = Color(0xFF4FD6C4)
 private val BubbleColor = Color(0xFF1A232C)
 private val Warn = Color(0xFFE2725B)
@@ -263,7 +270,10 @@ fun JarvisScreen(
                         color = Warn,
                         fontFamily = MonoFamily,
                         fontSize = 11.sp,
-                        modifier = Modifier.clickable { state.lowMemoryWarning = null },
+                        modifier =
+                            Modifier
+                                .clickable { state.lowMemoryWarning = null }
+                                .semantics { onClick(label = "Dismiss warning") { state.lowMemoryWarning = null; true } },
                     )
                 }
             }
@@ -543,7 +553,11 @@ private fun SettingsGroup(
                 Modifier
                     .fillMaxWidth()
                     .height(48.dp)
-                    .clickable(enabled = enabled && !isSelected) { onSelect(name) }
+                    .selectable(
+                        selected = isSelected,
+                        enabled = enabled && !isSelected,
+                        role = Role.RadioButton,
+                    ) { onSelect(name) }
                     .padding(horizontal = 24.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -774,10 +788,36 @@ private fun MicControl(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val holdToStop = isSpeaking || isListening || isThinking
+        // The ring is drawn on a bare Canvas, so it has no accessible name or
+        // action by default; the holdToStop branch below also bypasses
+        // Modifier.clickable (a raw pointerInput gesture, needed for the
+        // hold-to-stop timing), which means TalkBack/switch access get no
+        // click action at all unless one is added explicitly here.
+        val micAccessibilityLabel =
+            when {
+                isListening -> "Listening. Double tap to stop."
+                isThinking -> "Thinking. Double tap to stop."
+                isSpeaking && state.isPaused -> "Paused. Double tap to resume."
+                isSpeaking -> "Speaking. Double tap to pause."
+                else -> state.caption
+            }
         Canvas(
             modifier =
                 Modifier
                     .size(diameter)
+                    .semantics {
+                        contentDescription = micAccessibilityLabel
+                        // Only changes on phase transitions, not per-second tick, so
+                        // this won't spam TalkBack the way the elapsed-time caption
+                        // below would if it were made a live region instead.
+                        liveRegion = LiveRegionMode.Polite
+                        if (holdToStop) {
+                            onClick(label = if (isSpeaking) "Pause or resume" else "Stop") {
+                                if (isSpeaking) onPauseToggle() else onStopTap()
+                                true
+                            }
+                        }
+                    }
                     .then(
                         if (holdToStop) {
                             Modifier.pointerInput(isSpeaking) {

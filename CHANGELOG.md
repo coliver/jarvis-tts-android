@@ -2,6 +2,13 @@
 
 All notable changes to this project, newest first. Dates are commit dates.
 
+## 2026-09-20
+
+### Fixed
+- Accessibility: the mic control had no label and, while listening/thinking/speaking, no TalkBack-reachable action at all (its hold-to-stop gesture bypassed Compose's accessibility system entirely). It now announces its phase and exposes a stop/pause action.
+- Accessibility: dimmed label text fell just under WCAG AA contrast against the background; lightened slightly to clear it.
+- Accessibility: model/voice picker rows and the low-memory warning's dismiss action are now properly announced to screen readers.
+
 ## 2026-09-19
 
 ### Added
