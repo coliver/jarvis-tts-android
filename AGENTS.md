@@ -174,16 +174,30 @@ originally measured 1600-5100 RMS): recording now stops ~1s after speech
 ends (6.2s total for a one-sentence test) instead of hitting the 15s cap,
 with the transcript still coming through correctly.
 
-## UI layout (as of 2026-09-19)
+## UI layout (as of 2026-09-21)
 
 Modeled on AI chat apps, all in `JarvisScreen.kt`, no icon library (glyphs
-are drawn on `Canvas` in `GlyphButton`):
+are drawn on `Canvas` in `GlyphButton`, and the idle mic ring's microphone
+icon is drawn the same way in `drawMicGlyph`):
 - Top bar: menu button (opens `HistoryDrawer`, a `ModalNavigationDrawer`),
   title, and a sliders button (opens `SettingsSheet`, a `ModalBottomSheet`
   holding the model and voice lists). Both lists are idle-gated.
-- Empty conversation: the voice ring is large and centered (hero). Once
-  there are turns it shrinks to a dock under the transcript. `MicControl`
-  takes a `diameter` and scales its strokes with it.
+- Empty conversation: the voice ring is large and centered (hero,
+  `HERO_RING_DP = 232`). Once there are turns it shrinks to a dock under the
+  transcript (`DOCK_RING_DP = 148`, raised from 112 on 2026-09-21 since it
+  read as too small to tap confidently). `MicControl` takes a `diameter` and
+  scales its strokes with it via `scale = diameter.value / 176f`; raising
+  `DOCK_RING_DP` past 176 would flip it onto the hero-sized spacing/font
+  branches (`scale > 1f` checks), so keep it under that unless those
+  branches are revisited too.
+- Idle ring: draws a plain mic icon (`drawMicGlyph`) instead of the small
+  center dot the other phases use, and the "Tap to talk" caption underneath
+  is left blank (not removed as a row -- see `BELOW_CAPTION_HEIGHT_DP` for
+  why fixed-height blank slots exist here rather than conditionally omitting
+  the row) so the ring communicates its own affordance without the ring
+  visibly resizing across phases. TalkBack still hears "Tap to talk" from
+  `micAccessibilityLabel`; only the *drawn* text disappeared, not the
+  semantics.
 - Transcript: Jarvis replies are plain text with an accent hairline; user
   turns are right-aligned bubbles. Each turn has a small timing footnote.
 - Warm-up still shows the telemetry row and the Breakout game.

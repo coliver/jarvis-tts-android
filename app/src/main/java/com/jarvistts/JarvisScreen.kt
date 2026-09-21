@@ -63,11 +63,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -187,7 +189,7 @@ fun JarvisTheme(content: @Composable () -> Unit) {
 }
 
 private const val HERO_RING_DP = 232
-private const val DOCK_RING_DP = 112
+private const val DOCK_RING_DP = 148
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -921,12 +923,28 @@ private fun MicControl(
                     strokeWidth = (1.5f * scale).coerceAtLeast(1f).dp.toPx(),
                 )
             }
-            drawCircle(color = ringColor, radius = (3f * scale).coerceAtLeast(2f).dp.toPx(), center = center)
+            // Idle is the resting state most often seen, and used to rely entirely
+            // on the "Tap to talk" caption below to signal what the ring does; a
+            // literal mic glyph makes that obvious from the ring alone.
+            if (state.phase == Phase.IDLE) {
+                drawMicGlyph(center = center, scale = scale, color = ringColor)
+            } else {
+                drawCircle(color = ringColor, radius = (3f * scale).coerceAtLeast(2f).dp.toPx(), center = center)
+            }
         }
         Spacer(Modifier.height(if (scale > 1f) 20.dp else 8.dp))
         val showsElapsed = state.phase == Phase.LISTENING || state.phase == Phase.THINKING || state.phase == Phase.SPEAKING
+        // The idle mic glyph now carries "tap to talk" on its own, so the caption
+        // row is left blank (not removed) rather than showing that text, keeping
+        // this height identical across phases -- see BELOW_CAPTION_HEIGHT_DP for
+        // the same reasoning applied to the hint row.
         Text(
-            text = if (showsElapsed) "${state.caption} ${state.stageElapsedSeconds}s" else state.caption,
+            text =
+                when {
+                    state.phase == Phase.IDLE -> ""
+                    showsElapsed -> "${state.caption} ${state.stageElapsedSeconds}s"
+                    else -> state.caption
+                },
             color = TextDim,
             fontFamily = MonoFamily,
             fontSize = if (scale > 1f) 15.sp else 13.sp,
@@ -960,3 +978,58 @@ private fun MicControl(
 }
 
 private const val BELOW_CAPTION_HEIGHT_DP = 22
+
+/** A plain line-drawn microphone: capsule body, a cradling stand arc, a
+ *  stem, and a base -- the same drawLine/drawArc glyph style as [GlyphButton]
+ *  rather than a bundled icon set. Drawn in place of the idle ring's small
+ *  center dot so the ring itself reads as "tap to talk" without relying on
+ *  the caption text underneath it.
+ */
+private fun DrawScope.drawMicGlyph(
+    center: Offset,
+    scale: Float,
+    color: Color,
+) {
+    val bodyWidth = (11f * scale).coerceAtLeast(8f).dp.toPx()
+    val bodyHeight = (20f * scale).coerceAtLeast(14f).dp.toPx()
+    val strokeWidth = (2.2f * scale).coerceAtLeast(1.6f).dp.toPx()
+    val standRadius = bodyWidth / 2f + strokeWidth * 1.6f
+    val stemLength = (6f * scale).coerceAtLeast(4f).dp.toPx()
+    val baseHalfWidth = (6f * scale).coerceAtLeast(4f).dp.toPx()
+
+    // Shifted up slightly so the body+stand+stem+base group balances around center.
+    val bodyCenter = center - Offset(0f, stemLength / 2f + strokeWidth)
+    drawRoundRect(
+        color = color,
+        topLeft = Offset(bodyCenter.x - bodyWidth / 2f, bodyCenter.y - bodyHeight / 2f),
+        size = Size(bodyWidth, bodyHeight),
+        cornerRadius = CornerRadius(bodyWidth / 2f),
+    )
+
+    val standCenterY = bodyCenter.y + bodyHeight / 2f - standRadius * 0.35f
+    drawArc(
+        color = color,
+        startAngle = 0f,
+        sweepAngle = 180f,
+        useCenter = false,
+        topLeft = Offset(bodyCenter.x - standRadius, standCenterY - standRadius),
+        size = Size(standRadius * 2f, standRadius * 2f),
+        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+    )
+
+    val standBottomY = standCenterY + standRadius
+    drawLine(
+        color = color,
+        start = Offset(bodyCenter.x, standBottomY),
+        end = Offset(bodyCenter.x, standBottomY + stemLength),
+        strokeWidth = strokeWidth,
+        cap = StrokeCap.Round,
+    )
+    drawLine(
+        color = color,
+        start = Offset(bodyCenter.x - baseHalfWidth, standBottomY + stemLength),
+        end = Offset(bodyCenter.x + baseHalfWidth, standBottomY + stemLength),
+        strokeWidth = strokeWidth,
+        cap = StrokeCap.Round,
+    )
+}
