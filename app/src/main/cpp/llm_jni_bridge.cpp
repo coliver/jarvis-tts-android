@@ -32,6 +32,17 @@ static int nThreads() {
     return 4;
 }
 
+// Tried pinning the compute thread to cpu4-8 (the fast+mid cluster) here via
+// sched_setaffinity, on the theory that nThreads()'s cap alone doesn't say
+// WHICH cores the OS schedules those threads onto. Verified the pin itself
+// took correctly (/proc/<pid>/task/*/status showed the right Cpus_allowed
+// mask), but measured tok/s got WORSE (0.9-4.4 vs an unpinned 3.2-6.6
+// baseline) -- most likely because confining every turn's compute to the
+// same fixed 5 cores concentrates heat there instead of letting the OS
+// spread load across all 9 and let hot cores cool. Reverted 2026-09-21;
+// don't reintroduce without a controlled cold-device A/B, not back-to-back
+// turns on an already-warm phone.
+
 struct ProgressCtx {
     JNIEnv *env;
     jobject listener; // NativeLLM.ProgressListener, local ref valid on this thread

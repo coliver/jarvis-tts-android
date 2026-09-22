@@ -190,8 +190,9 @@ icon is drawn the same way in `drawMicGlyph`):
   `DOCK_RING_DP` past 176 would flip it onto the hero-sized spacing/font
   branches (`scale > 1f` checks), so keep it under that unless those
   branches are revisited too.
-- Idle ring: draws a plain mic icon (`drawMicGlyph`) instead of the small
-  center dot the other phases use, and the "Tap to talk" caption underneath
+- Idle ring: draws a plain mic icon (`drawMicGlyph`, sized up ~35% on
+  2026-09-21 after the first pass read as too small at a glance) instead of
+  the small center dot the other phases use, and the "Tap to talk" caption underneath
   is left blank (not removed as a row -- see `BELOW_CAPTION_HEIGHT_DP` for
   why fixed-height blank slots exist here rather than conditionally omitting
   the row) so the ring communicates its own affordance without the ring
@@ -242,12 +243,33 @@ Not done / open follow-ups:
   to a friend; would need a keystore + `signingConfig` for anything wider.
 - No wake word, no persistent background service, one-shot tap-to-talk
   only.
-- No instrumented UI tests for `MainActivity`/`JarvisScreen`.
+- Instrumented UI tests: `JarvisScreenSmokeTest` exists (see TODO item 7
+  below) but unverified on-device, blocked on a build-toolchain gap.
 - LLM generation speed has shown thermal-throttling-driven variance (0.9 to
-  4.6 tok/s on identical prompts) after long back-to-back native rebuild
-  sessions, not reproduced as a cold-device baseline issue. If it recurs,
-  check `adb shell dumpsys thermalservice` for sensor throttle status
-  before assuming a code regression.
+  6.6 tok/s on identical prompts) after long back-to-back native rebuild
+  and voice-turn sessions, not reproduced as a cold-device baseline issue.
+  If it recurs, check `adb shell dumpsys thermalservice` for sensor
+  throttle status before assuming a code regression; a clean 5-minute idle
+  cooldown reliably bought the best measured run of a session (6.6 tok/s),
+  degrading again within one more turn of continued use.
+  Investigated 2026-09-21 whether this is fixable rather than just
+  endured: `llm_jni_bridge.cpp`'s `nThreads()` already caps work to 4
+  threads on the fast+mid cluster (cpu4-8 on this Tensor G3, confirmed via
+  `cpufreq/cpuinfo_max_freq`), but nothing pins threads to those specific
+  cores. Tried adding `sched_setaffinity` pinning to cpu4-8 -- verified via
+  `/proc/<pid>/task/*/status` that the pin itself took correctly, but
+  measured tok/s got WORSE (0.9-4.4 vs an unpinned 3.2-6.6 baseline),
+  likely because confining every turn's compute to the same fixed 5 cores
+  concentrates heat there instead of letting the OS spread load and let
+  hot cores cool. Reverted; don't reintroduce without a controlled
+  cold-device A/B (not back-to-back turns on an already-warm phone).
+  Separately added `+i8mm` to the `-march=` compile flags (`CMakeLists.txt`,
+  both the top-level flags and the ones passed into llama.cpp's
+  ExternalProject build) -- Tensor G3's cores are all ARMv9.0-A, which
+  mandates it, and ggml has dedicated fast kernels for it on K-quant
+  formats like this project's Q4_K_M models. Compiles clean; performance
+  impact unverified, the device was too thermally loaded from the same
+  session's testing to get a clean read.
 
 ## TODO (as of 2026-09-19)
 

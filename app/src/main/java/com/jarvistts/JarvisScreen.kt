@@ -990,12 +990,12 @@ private fun DrawScope.drawMicGlyph(
     scale: Float,
     color: Color,
 ) {
-    val bodyWidth = (11f * scale).coerceAtLeast(8f).dp.toPx()
-    val bodyHeight = (20f * scale).coerceAtLeast(14f).dp.toPx()
-    val strokeWidth = (2.2f * scale).coerceAtLeast(1.6f).dp.toPx()
+    val bodyWidth = (15f * scale).coerceAtLeast(11f).dp.toPx()
+    val bodyHeight = (27f * scale).coerceAtLeast(19f).dp.toPx()
+    val strokeWidth = (3f * scale).coerceAtLeast(2.2f).dp.toPx()
     val standRadius = bodyWidth / 2f + strokeWidth * 1.6f
-    val stemLength = (6f * scale).coerceAtLeast(4f).dp.toPx()
-    val baseHalfWidth = (6f * scale).coerceAtLeast(4f).dp.toPx()
+    val stemLength = (8f * scale).coerceAtLeast(5.5f).dp.toPx()
+    val baseHalfWidth = (8f * scale).coerceAtLeast(5.5f).dp.toPx()
 
     // Shifted up slightly so the body+stand+stem+base group balances around center.
     val bodyCenter = center - Offset(0f, stemLength / 2f + strokeWidth)

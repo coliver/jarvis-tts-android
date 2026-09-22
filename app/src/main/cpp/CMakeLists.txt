@@ -27,9 +27,12 @@ set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 # architecture level, those macros are unset and everything silently falls back
 # to slow scalar code even on hardware that fully supports them (confirmed via
 # ggml_cpu_has_fp16_va() returning 0 on a Tensor G3, which does have FP16 SIMD).
+# +i8mm adds the matrix-multiply extension ggml's K-quant kernels (this
+# project's Q4_K_M models) use for a further-accelerated quantized matmul path;
+# Tensor G3's X3/A715/A510 cores are all ARMv9.0-A, which mandates i8mm.
 if(CMAKE_SYSTEM_NAME STREQUAL "Android")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv8.2-a+dotprod+fp16")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8.2-a+dotprod+fp16")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -march=armv8.2-a+dotprod+fp16+i8mm")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=armv8.2-a+dotprod+fp16+i8mm")
 endif()
 
 include(FetchContent)
@@ -161,8 +164,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android")
         -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
         -DANDROID_ABI=${ANDROID_ABI}
         -DANDROID_PLATFORM=${ANDROID_PLATFORM}
-        -DCMAKE_C_FLAGS=-march=armv8.2-a+dotprod+fp16
-        -DCMAKE_CXX_FLAGS=-march=armv8.2-a+dotprod+fp16
+        -DCMAKE_C_FLAGS=-march=armv8.2-a+dotprod+fp16+i8mm
+        -DCMAKE_CXX_FLAGS=-march=armv8.2-a+dotprod+fp16+i8mm
     )
 endif()
 

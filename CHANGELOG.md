@@ -10,7 +10,7 @@ All notable changes to this project, newest first. Dates are commit dates.
 
 ### Changed
 - The docked mic ring (shown once a conversation has turns) is bigger, 148dp up from 112dp.
-- The idle ring now draws a plain microphone icon in its center instead of a small dot, so it reads as "tap to talk" on sight; the "Tap to talk" caption text underneath it is gone (the ring still announces "Tap to talk" to screen readers as before).
+- The idle ring now draws a plain microphone icon in its center instead of a small dot, so it reads as "tap to talk" on sight (sized up once more after an initial pass read as too small); the "Tap to talk" caption text underneath it is gone (the ring still announces "Tap to talk" to screen readers as before).
 
 ### Fixed
 - The mic kept recording well past the end of a sentence whenever there was any background noise, running until the 15-second cap instead of stopping shortly after you stopped talking. The fixed volume threshold that decided "is this silence?" couldn't tell background chatter from speech once the room wasn't near-silent (measured on-device: office background noise at conversational volume read 1600-5100, well into normal speech range). Recording now calibrates to the room's actual noise level at the start of each turn and looks for audio meaningfully louder than that, so it works across quiet and noisy rooms instead of being tuned to one.
